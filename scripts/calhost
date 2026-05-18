@@ -1,0 +1,17 @@
+                                                                                Список баз даних
+     Назва      | Власник  | Кодування | Постачальник локалі |     Порядок сортування     |           Ctype            | Локаль | Правила ICU |          Права доступу           
+----------------+----------+-----------+---------------------+----------------------------+----------------------------+--------+-------------+----------------------------------
+ ai_coordinator | postgres | UTF8      | libc                | English_United States.1252 | English_United States.1252 |        |             | =Tc/postgres                    +
+                |          |           |                     |                            |                            |        |             | postgres=CTc/postgres           +
+                |          |           |                     |                            |                            |        |             | ai_coordinator_user=CTc/postgres
+ bot_reporting  | postgres | UTF8      | libc                | English_United States.1252 | English_United States.1252 |        |             | 
+ dev_memory     | postgres | UTF8      | libc                | English_United States.1252 | English_United States.1252 |        |             | =Tc/postgres                    +
+                |          |           |                     |                            |                            |        |             | postgres=CTc/postgres           +
+                |          |           |                     |                            |                            |        |             | memory_agent=c/postgres
+ postgres       | postgres | UTF8      | libc                | English_United States.1252 | English_United States.1252 |        |             | 
+ template0      | postgres | UTF8      | libc                | English_United States.1252 | English_United States.1252 |        |             | =c/postgres                     +
+                |          |           |                     |                            |                            |        |             | postgres=CTc/postgres
+ template1      | postgres | UTF8      | libc                | English_United States.1252 | English_United States.1252 |        |             | =c/postgres                     +
+                |          |           |                     |                            |                            |        |             | postgres=CTc/postgres
+(6 рядків)
+

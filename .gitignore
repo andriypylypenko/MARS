@@ -1,0 +1,25 @@
+# Secrets
+.env
+
+# Python
+__pycache__/
+*.pyc
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Runtime outputs
+runtime/**/output/
+runtime/**/processed/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# DB dumps
+runtime/db_backups/*.sql
+
+# PDFs and source docs
+*.pdf
