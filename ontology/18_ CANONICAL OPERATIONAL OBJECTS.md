@@ -1,8 +1,9 @@
 # 18_CANONICAL_OPERATIONAL_OBJECTS
 
-Status: Draft v2  
-Confidence: Medium-High  
-Authority: Canonical Organizational Object Definitions  
+Status: Canonical Draft  
+Confidence: High  
+Authority: Canonical Operational Object Doctrine
+
 Depends On:
 - 16_OPERATIONAL_ONTOLOGY.md
 - 17_CORE_SYSTEM_ARCHITECTURE.md
@@ -11,498 +12,636 @@ Depends On:
 
 # 1. Purpose
 
-This document defines canonical operational objects used within MARS.
+This document defines canonical operational objects participating within MARS reconstruction architecture.
 
-It establishes:
-- foundational organizational object categories;
-- object semantics;
-- object relationships;
-- temporal semantics;
-- governance semantics;
-- reconstruction roles.
+Canonical operational objects establish:
+- authoritative organizational mutation structures;
+- reconstruction participation semantics;
+- governance visibility semantics;
+- temporal applicability structures;
+- replay participation semantics;
+- interpretive derivation boundaries.
 
-This document defines ontological object semantics rather than implementation schema.
-
-This document does not define:
-- database tables;
-- APIs;
-- storage engines;
-- transport formats.
+This document defines operational object semantics rather than implementation-specific persistence structures.
 
 ---
 
-# 2. Canonical Object Principles
+## Canonical Architectural Invariants
 
-## 2.1 Canonical Object Identity
+Unless explicitly overridden by narrower domain semantics, the following invariants apply throughout MARS:
 
-Canonical operational objects must possess:
-- globally unique identity;
-- reconstructable attribution;
-- temporal semantics;
-- governance applicability.
+- authoritative basis immutable;
+- organizational correction additive;
+- Interpretations derived and non-authoritative;
+- replay deterministic and reconstructable;
+- AI systems non-authoritative;
+- governance explicit and default-deny;
+- Scenarios isolated from authoritative basis;
+- disclosure detached from authoritative reconstruction substrate;
+- authoritative basis sufficient for deterministic reconstruction.
+
+---
+
+# 2. Foundational Operational Object Principles
+
+## 2.1 Canonical Object Doctrine
+
+Canonical operational objects represent reconstructable organizational structures participating in:
+- replay;
+- reconstruction;
+- governance;
+- disclosure;
+- temporal applicability;
+- Scenario derivation.
+
+Canonical operational objects preserve:
+- reconstructable identity;
+- temporal applicability;
+- governance visibility;
+- replay compatibility.
 
 ---
 
 ## 2.2 Reconstruction Participation
 
-Canonical operational objects participate in deterministic reconstruction from authoritative basis.
-
-Objects may therefore affect:
-- replay;
-- Interpretations;
-- governance reconstruction;
-- disclosure representations;
-- operational balances.
-
----
-
-## 2.3 Temporal Semantics
-
-Canonical operational objects may possess:
-- Valid Time;
-- Assertion Time;
-- authoritative commit chronology.
-
-Temporal semantics must remain reconstructable.
-
----
-
-## 2.4 Governance Semantics
-
-Canonical operational objects may exist under:
-- authorization Constraints;
-- disclosure Constraints;
+Canonical operational objects participate in deterministic reconstruction through:
+- temporal applicability;
+- Ruleset interpretation;
 - governance applicability;
-- escalation requirements.
+- replay ordering;
+- relational derivation.
 
-Governance semantics must remain reconstructable.
+Interpretations generated from canonical operational objects remain derived non-authoritative representations.
+
+---
+
+## 2.3 Authoritative vs Derived Objects
+
+MARS explicitly distinguishes between:
+- authoritative operational objects;
+- derived analytical structures.
+
+Authoritative objects participate directly in replay.
+
+Derived structures remain:
+- reconstructable;
+- regenerable;
+- disposable;
+- non-authoritative.
+
+Derived structures must not become authoritative replay substrate.
+
+---
+
+## 2.4 Temporal Applicability
+
+All canonical operational objects remain temporally scoped.
+
+Temporal applicability governs:
+- replay participation;
+- governance validity;
+- disclosure eligibility;
+- Ruleset applicability;
+- Scenario participation.
+
+Temporal applicability remains logically independent from identity persistence.
 
 ---
 
 ## 2.5 Immutability Principles
 
-Authoritative committed historical objects must not undergo destructive mutation.
+Authoritative operational objects remain append-only after authoritative commit.
 
-Correction occurs through:
-- additive Events;
-- compensating Primitive Transitions;
-- reinterpretation;
-- governance-authorized extension.
+All authoritative organizational correction occurs through additive extension rather than destructive historical mutation.
+
+Historical reconstructability must remain preserved.
 
 ---
 
-# 3. Object: Primitive Transition
+# 3. Primitive Transition
 
-## 3.1 Purpose
+## 3.1 Definition
 
-Primitive Transition introduces smallest authoritative indivisible organizational mutation.
+Primitive Transition represents lowest authoritative organizational mutation unit.
 
-Primitive Transitions constitute lowest authoritative reconstructable operational layer.
+Primitive Transition:
+- immutable after authoritative commit;
+- temporally scoped;
+- governance-visible;
+- replay-participating;
+- reconstructable.
 
----
-
-## 3.2 Identity
-
-Primitive Transition must possess:
-- globally unique immutable identity;
-- reconstructable attribution;
-- authoritative commit traceability.
+Primitive Transition exists only within Event structure.
 
 ---
 
-## 3.3 Temporal Semantics
+## 3.2 Primitive Transition Participation
 
-Primitive Transition may possess:
-- Valid Time;
-- Assertion Time;
-- authoritative commit chronology.
+Primitive Transition participates directly in:
+- replay;
+- reconstruction;
+- temporal derivation;
+- governance applicability;
+- Ruleset interpretation.
 
----
-
-## 3.4 Mutability
-
-Primitive Transition becomes immutable following authoritative commit.
+Primitive Transition represents atomic authoritative organizational mutation substrate.
 
 ---
 
-## 3.5 Relationships
+## 3.3 Primitive Transition Boundaries
 
-Primitive Transition may:
-- affect Resources;
-- affect Obligations;
-- affect Commitments;
-- affect Constraints;
-- participate in Events;
-- participate in replay;
-- participate in Interpretations.
+Primitive Transition does not independently:
+- execute workflows;
+- authorize disclosure;
+- operationalize Proposals;
+- activate external side effects;
+- alter governance semantics.
 
----
-
-## 3.6 Governance Requirements
-
-Primitive Transition requires:
-- attributable origin;
-- authoritative commit authorization;
-- reconstructable governance context.
+Primitive Transition represents authoritative mutation structure rather than execution mechanism.
 
 ---
 
-## 3.7 Reconstruction Role
+## 3.4 Primitive Transition Identity
 
-Primitive Transition constitutes foundational replay and reconstruction unit within authoritative basis.
+Primitive Transition identity remains:
+- stable;
+- reconstructable;
+- replay-compatible;
+- temporally attributable.
+
+Primitive Transition identity must not be destructively replaced or recycled.
 
 ---
 
-# 4. Object: Operational Account
+## 3.5 Primitive Transition Temporal Semantics
 
-## 4.1 Purpose
+Primitive Transition may participate within:
+- Valid Time semantics;
+- Assertion Time semantics;
+- replay ordering;
+- governance applicability;
+- Scenario applicability where authorized.
 
-Operational Account holds timestamped indexed representations of organizational condition associated with particular operational domain.
+Temporal supersession does not destroy Primitive Transition historical reconstructability.
+
+---
+
+# 4. Event
+
+## 4.1 Definition
+
+Event represents logical organizational occurrence grouping one or more Primitive Transitions.
+
+Event remains:
+- reconstructable;
+- attributable;
+- temporally scoped;
+- governance-visible;
+- replay-participating.
+
+Event represents authoritative organizational composition structure.
+
+---
+
+## 4.2 Event Composition
+
+Canonical relation:
+
+```text
+Event 1 → n Primitive Transitions
+Primitive Transition n → 1 Event
+```
+
+Primitive Transition cannot exist without Event.
+
+Event must contain one or more Primitive Transitions.
+
+---
+
+## 4.3 Event Participation
+
+Event participates directly within:
+- replay;
+- governance reconstruction;
+- disclosure reconstruction;
+- temporal reconstruction;
+- Scenario derivation where applicable.
+
+Event grouping supports:
+- logical organizational composition;
+- governance traceability;
+- replay ordering;
+- disclosure attribution.
+
+---
+
+## 4.4 Event Immutability
+
+Event remains immutable after authoritative commit.
+
+All authoritative organizational correction occurs through additive extension.
+
+Corrective organizational structures must emerge through:
+- corrective Events;
+- revised applicability;
+- superseding structures;
+- additive organizational mutation.
+
+---
+
+## 4.5 Commit Participation
+
+Authoritative commit establishes immutable participation of committed Event within authoritative organizational basis.
+
+Commit participation preserves:
+- replay visibility;
+- governance attribution;
+- temporal reconstructability;
+- historical continuity.
+
+---
+
+# 5. Operational Account
+
+## 5.1 Definition
+
+Operational Account represents reconstructable organizational balance or state aggregation structure.
 
 Operational Accounts may represent:
-- balances;
-- liabilities;
-- asset condition;
-- operational quantities;
-- derived organizational state representations.
+- financial balances;
+- obligations;
+- inventory positions;
+- governance states;
+- disclosure positions;
+- analytical aggregation structures.
 
-Operational Accounts represent reconstructable derived operational structures rather than independent authoritative reality.
-
----
-
-## 4.2 Identity
-
-Operational Account must possess:
-- globally unique identity;
-- reconstructable operational classification;
-- governance applicability context.
+Operational Accounts remain derived replay-generated structures.
 
 ---
 
-## 4.3 Temporal Semantics
+## 5.2 Operational Account Reconstruction
 
-Operational Account representations may possess:
-- Valid Time;
-- Assertion Time;
-- reconstruction chronology.
-
----
-
-## 4.4 Mutability
-
-Operational Account representations are regenerable through replay and reconstruction.
-
-Operational Accounts are not immutable authoritative basis objects.
-
----
-
-## 4.5 Relationships
-
-Operational Accounts may:
-- derive from Primitive Transitions;
-- derive from Events;
-- participate in Interpretations;
-- affect disclosure representations;
-- participate in replay regeneration.
-
----
-
-## 4.6 Governance Requirements
-
-Operational Accounts may exist under:
-- disclosure restrictions;
-- governance Constraints;
-- interpretive applicability;
-- reconstruction permissions.
-
----
-
-## 4.7 Reconstruction Role
-
-Operational Accounts represent replay-generated organizational representations reconstructed from authoritative basis.
-
----
-
-# 5. Object: Resource
-
-## 5.1 Purpose
-
-Resource represents organizationally relevant economic or operational object possessing reconstructable organizational significance.
-
-Resources may include:
-- money;
-- inventory;
-- equipment;
-- receivables;
-- operational capacity;
-- controlled assets.
-
----
-
-## 5.2 Identity
-
-Resource must possess:
-- globally unique identity;
-- reconstructable attribution;
-- operational classification.
-
----
-
-## 5.3 Temporal Semantics
-
-Resource condition may possess:
-- Valid Time;
-- Assertion Time;
-- authoritative commit chronology.
-
----
-
-## 5.4 Mutability
-
-Resource condition evolves through authoritative Events and Primitive Transitions.
-
-Historical Resource condition remains reconstructable.
-
----
-
-## 5.5 Relationships
-
-Resources may:
-- participate in Events;
-- participate in Primitive Transitions;
-- affect Operational Accounts;
-- participate in Commitments;
-- participate in Obligations;
-- participate in Interpretations.
-
----
-
-## 5.6 Governance Requirements
-
-Resources may exist under:
-- authorization Constraints;
-- disclosure restrictions;
-- governance applicability;
-- operational control requirements.
-
----
-
-## 5.7 Reconstruction Role
-
-Resources represent reconstructable organizational objects whose condition emerges from authoritative basis across time.
-
----
-
-# 6. Object: Obligation
-
-## 6.1 Purpose
-
-Obligation represents reconstructable organizational commitment to transfer economic or operational value to external or internal counterparties.
-
----
-
-## 6.2 Identity
-
-Obligation must possess:
-- globally unique identity;
-- reconstructable attribution;
-- counterparty association;
-- governance applicability context.
-
----
-
-## 6.3 Temporal Semantics
-
-Obligations may possess:
-- Valid Time;
-- Assertion Time;
-- maturity periods;
-- authoritative commit chronology.
-
----
-
-## 6.4 Mutability
-
-Obligation condition evolves through:
-- authoritative Events;
-- Primitive Transitions;
-- fulfillment Events;
-- corrective Events.
-
-Historical Obligation condition remains reconstructable.
-
----
-
-## 6.5 Relationships
-
-Obligations may:
-- affect Resources;
-- affect Operational Accounts;
-- participate in Commitments;
-- participate in Workflows;
-- participate in Interpretations.
-
----
-
-## 6.6 Governance Requirements
-
-Obligations require:
-- attributable origin;
-- reconstructable authorization basis;
-- disclosure Constraints;
+Operational Accounts emerge through:
+- deterministic replay;
+- relational derivation;
+- Ruleset interpretation;
+- temporal applicability;
 - governance applicability.
 
----
-
-## 6.7 Reconstruction Role
-
-Obligations represent reconstructable organizational liabilities emerging from authoritative basis.
-
----
-
-# 7. Object: Commitment
-
-## 7.1 Purpose
-
-Commitment represents organizational intent, reservation or bounded operational undertaking not yet constituting fulfilled authoritative organizational outcome.
-
-Commitments may include:
-- planned operations;
-- reserved resources;
-- pending workflows;
-- approved future actions;
-- governance-approved operational intent.
+Operational Accounts remain:
+- derived;
+- regenerable;
+- non-authoritative;
+- disposable.
 
 ---
 
-## 7.2 Identity
+## 5.3 Operational Account Identity
 
-Commitment must possess:
-- globally unique identity;
-- reconstructable attribution;
-- governance applicability context.
+Operational Account identity remains:
+- reconstructable;
+- temporally attributable;
+- replay-compatible.
 
----
-
-## 7.3 Temporal Semantics
-
-Commitments may possess:
-- Valid Time;
-- Assertion Time;
-- expected fulfillment periods;
-- authoritative commit chronology.
+Operational Account identity may depend upon:
+- Ruleset applicability;
+- temporal coordinates;
+- governance context;
+- Scenario applicability.
 
 ---
 
-## 7.4 Mutability
+## 5.4 Operational Account Boundaries
 
-Commitment condition evolves through:
-- authoritative Events;
-- workflow progression;
-- fulfillment;
-- cancellation;
-- corrective Events.
+Operational Accounts must not become:
+- authoritative replay substrate;
+- authoritative mutation structures;
+- governance authority structures;
+- replay dependencies.
 
-Historical Commitment condition remains reconstructable.
-
----
-
-## 7.5 Relationships
-
-Commitments may:
-- affect Resources;
-- affect Obligations;
-- participate in Workflows;
-- participate in Interpretations;
-- affect disclosure representations.
+Operational Accounts are regenerable replay-derived structures.
 
 ---
 
-## 7.6 Governance Requirements
+# 6. Ruleset
 
-Commitments may require:
-- authorization;
-- governance approval;
-- escalation handling;
-- disclosure restrictions.
+## 6.1 Definition
 
----
+Ruleset represents deterministic interpretive logic governing reconstruction semantics.
 
-## 7.7 Reconstruction Role
+Rulesets may govern:
+- accounting interpretation;
+- governance applicability;
+- disclosure eligibility;
+- legal interpretation;
+- Scenario derivation;
+- replay semantics.
 
-Commitments represent reconstructable organizational intent structures derived from authoritative basis.
-
----
-
-# 8. Object: Constraint
-
-## 8.1 Purpose
-
-Constraint represents bounded operational, governance or interpretive limitation applicable within MARS.
-
-Constraints may include:
-- authorization restrictions;
-- disclosure restrictions;
-- replay restrictions;
-- operational limits;
-- governance requirements;
-- temporal applicability restrictions.
+Rulesets remain:
+- reconstructable;
+- attributable;
+- temporally scoped;
+- replay-participating.
 
 ---
 
-## 8.2 Identity
+## 6.2 Ruleset Applicability
 
-Constraint must possess:
-- globally unique identity;
-- reconstructable applicability context;
-- governance attribution.
+Ruleset applicability may depend upon:
+- temporal applicability;
+- governance scope;
+- organizational scope;
+- Scenario applicability;
+- disclosure context.
 
----
-
-## 8.3 Temporal Semantics
-
-Constraints may possess:
-- Valid Time;
-- Assertion Time;
-- applicability intervals;
-- authoritative commit chronology.
+Different Rulesets may derive different Interpretations from identical authoritative basis.
 
 ---
 
-## 8.4 Mutability
+## 6.3 Ruleset Stability
 
-Constraint applicability evolves through:
-- governance decisions;
-- Ruleset evolution;
-- authoritative Events;
-- corrective governance actions.
+Historical Rulesets participating in authoritative replay must remain reconstructable.
 
-Historical Constraint applicability remains reconstructable.
+Rulesets must not be destructively deleted where replay reproducibility depends upon them.
 
 ---
 
-## 8.5 Relationships
+## 6.4 Ruleset Direction
 
-Constraints may:
-- affect Capabilities;
-- affect Authority;
-- affect disclosure;
-- affect replay;
-- affect Interpretations;
-- affect Workflows.
+Rulesets should preferentially remain:
+- declarative;
+- relationally derivable;
+- replay-compatible;
+- deterministic.
 
----
-
-## 8.6 Governance Requirements
-
-Constraints require:
-- explicit applicability;
-- reconstructable authorization;
-- governance attribution;
-- temporal traceability.
+Deterministic declarative reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.
 
 ---
 
-## 8.7 Reconstruction Role
+# 7. Interpretation
 
-Constraints represent reconstructable governance-bounded operational limitations participating in deterministic reconstruction.
+## 7.1 Definition
+
+Interpretation represents derived organizational representation generated through:
+- authoritative basis;
+- Rulesets;
+- temporal applicability;
+- governance applicability;
+- Scenario context.
+
+Interpretations remain:
+- derived;
+- non-authoritative;
+- reconstructable;
+- regenerable;
+- disposable.
+
+---
+
+## 7.2 Interpretation Dependency
+
+Interpretations remain dependent upon:
+- authoritative basis;
+- applicable Rulesets;
+- replay coordinates;
+- governance applicability;
+- Scenario assumptions where applicable.
+
+Different replay coordinates may derive different Interpretations.
+
+---
+
+## 7.3 Interpretation Identity
+
+Interpretation identity may depend upon:
+- replay coordinates;
+- Ruleset applicability;
+- governance applicability;
+- Scenario applicability;
+- authoritative basis composition.
+
+Materially different reconstruction conditions may require distinct Interpretation identity.
+
+---
+
+## 7.4 Interpretation Boundaries
+
+Interpretations must not:
+- independently mutate authoritative basis;
+- authorize governance actions;
+- operationalize Proposals;
+- become authoritative replay dependencies.
+
+Interpretations remain derived replay artifacts.
+
+---
+
+# 8. Governance Objects
+
+## 8.1 Governance Authority
+
+Governance Authority represents reconstructable organizational authorization semantics.
+
+Governance Authority determines:
+- authoritative commit eligibility;
+- disclosure authorization;
+- escalation responsibility;
+- replay authorization;
+- delegation applicability.
+
+Governance Authority remains:
+- explicit;
+- reconstructable;
+- attributable;
+- temporally scoped.
+
+---
+
+## 8.2 Delegation
+
+Delegation represents bounded governance-authorized transfer of limited authority scope.
+
+Delegation remains:
+- explicit;
+- temporally scoped;
+- revocable;
+- non-inheritable;
+- reconstructable.
+
+Absence of explicit delegation constitutes lack of delegated authorization.
+
+---
+
+## 8.3 Commit Record
+
+Commit Record represents governance-recognized acceptance of authoritative organizational mutation.
+
+Commit Record may preserve:
+- commit identity;
+- committing authority;
+- affected authoritative objects;
+- temporal metadata;
+- authorization references.
+
+Commit Record participates directly within replay traceability and governance reconstruction.
+
+---
+
+# 9. Scenario Objects
+
+## 9.1 Scenario
+
+Scenario represents isolated hypothetical reconstruction branch.
+
+Scenario may:
+- inherit authoritative basis;
+- apply alternate Rulesets;
+- apply hypothetical assumptions;
+- derive hypothetical Interpretations.
+
+Scenario remains:
+- isolated;
+- tagged;
+- replay-bounded;
+- non-authoritative.
+
+---
+
+## 9.2 Scenario Structures
+
+Scenario-derived structures may include:
+- hypothetical Events;
+- hypothetical Primitive Transitions;
+- hypothetical Interpretations;
+- hypothetical governance conditions;
+- alternate Rulesets.
+
+Scenario structures must not contaminate authoritative replay.
+
+---
+
+## 9.3 Scenario Boundaries
+
+Scenario replay may read authoritative basis but must never mutate authoritative basis.
+
+Scenario structures:
+- disposable;
+- supersedable;
+- non-authoritative;
+- analytically bounded.
+
+---
+
+# 10. Disclosure Objects
+
+## 10.1 Disclosure Artifact
+
+Disclosure Artifact represents detached externally deliverable organizational representation.
+
+Disclosure Artifacts remain:
+- bounded;
+- detached;
+- governance-authorized;
+- reconstructable;
+- non-authoritative.
+
+Disclosure Artifacts are exports rather than live authoritative replay surfaces.
+
+---
+
+## 10.2 Disclosure Boundaries
+
+Disclosure Artifacts must remain isolated from:
+- unrestricted replay access;
+- authoritative reconstruction substrate;
+- governance internals;
+- Scenario replay structures.
+
+Disclosure perimeter isolation prevents uncontrolled drill-through into authoritative basis.
+
+---
+
+# 11. Proposal Objects
+
+## 11.1 Proposal
+
+Proposal represents governance-reviewable candidate organizational mutation.
+
+Proposal may derive from:
+- replay analysis;
+- AI reasoning;
+- governance escalation;
+- disclosure review;
+- anomaly analysis;
+- Scenario derivation.
+
+Proposal remains:
+- non-authoritative;
+- attributable;
+- reconstructable;
+- governance-bounded.
+
+---
+
+## 11.2 Proposal Boundaries
+
+Proposal does not independently:
+- mutate authoritative basis;
+- authorize disclosure;
+- activate operational execution;
+- bypass governance.
+
+Proposal acceptance requires governance-recognized authoritative commit.
+
+---
+
+# 12. AI Runtime Objects
+
+## 12.1 AI Runtime Context
+
+AI runtime structures may participate within:
+- OCR extraction;
+- legal ambiguity interpretation;
+- anomaly explanation;
+- Proposal generation;
+- analytical augmentation.
+
+AI runtime contexts remain:
+- governance-bounded;
+- disclosure-bounded;
+- task-bounded;
+- non-authoritative.
+
+---
+
+## 12.2 AI Runtime Boundaries
+
+AI systems may not:
+- mutate authoritative basis;
+- authorize governance actions;
+- independently execute authoritative commits;
+- bypass replay isolation;
+- activate operational side effects.
+
+AI cognition never constitutes governance Authority.
+
+---
+
+# 13. Foundational Architectural Direction
+
+Canonical operational objects within MARS preferentially support:
+- deterministic declarative reconstruction;
+- replay reproducibility;
+- temporal applicability;
+- governance traceability;
+- relational derivation;
+- append-only authoritative basis.
+
+The architecture intentionally minimizes:
+- mutable authoritative state;
+- opaque procedural semantics;
+- autonomous AI authority;
+- uncontrolled operational execution;
+- hidden governance assumptions.
+
+Deterministic declarative reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.

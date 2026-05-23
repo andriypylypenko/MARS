@@ -1,8 +1,9 @@
 # 17_CORE_SYSTEM_ARCHITECTURE
 
-Status: Draft v2  
-Confidence: Medium-High  
-Authority: Core Architectural Semantics  
+Status: Canonical Draft  
+Confidence: High  
+Authority: Core Architectural Doctrine
+
 Depends On:
 - 16_OPERATIONAL_ONTOLOGY.md
 
@@ -10,506 +11,504 @@ Depends On:
 
 # 1. Purpose
 
-This document defines high-level architectural structure of MARS.
+This document defines core architectural structure of MARS.
 
-It establishes:
-- major architectural subsystems;
-- operational flow principles;
-- architectural separations;
-- storage philosophy;
-- trust boundaries;
-- replay and reconstruction foundations.
+The architecture defined here establishes:
+- authoritative reconstruction substrate;
+- deterministic replay architecture;
+- governance boundaries;
+- interpretive derivation architecture;
+- disclosure perimeter structure;
+- Scenario isolation semantics;
+- AI operational boundaries.
 
-This document defines architectural semantics rather than implementation details.
-
-This document does not define:
-- database schema;
-- APIs;
-- runtime implementation;
-- transport protocols;
-- deployment topology.
+This document defines architectural principles rather than implementation-specific technologies.
 
 ---
 
-# 2. Trust Boundaries
+## Canonical Architectural Invariants
 
-## 2.1 Foundational Separation Principle
+Unless explicitly overridden by narrower domain semantics, the following invariants apply throughout MARS:
 
-MARS preserves explicit architectural separation between:
-- AI cognition;
-- authoritative commit authority;
-- economic execution;
-- disclosure mechanisms.
-
-No single subsystem should independently possess unrestricted ability to:
-- derive information;
-- authorize organizational action;
-- mutate authoritative basis;
-- execute economically significant operations;
-- disseminate unrestricted organizational information.
+- authoritative basis immutable;
+- organizational correction additive;
+- Interpretations derived and non-authoritative;
+- replay deterministic and reconstructable;
+- AI systems non-authoritative;
+- governance explicit and default-deny;
+- Scenarios isolated from authoritative basis;
+- disclosure detached from authoritative reconstruction substrate;
+- authoritative basis sufficient for deterministic reconstruction.
 
 ---
 
-## 2.2 AI Cognition Boundary
+# 2. Foundational Architectural Principles
 
-AI cognition within MARS remains operationally bounded.
+## 2.1 Reconstruction-Centric Architecture
 
-AI-assisted mechanisms may assist:
-- OCR;
-- extraction;
-- classification;
-- ambiguity detection;
-- anomaly identification;
-- interpretive assistance;
-- analytical rendering;
-- replay assistance.
+MARS reconstructs organizational state from authoritative organizational basis rather than maintaining mutable persistent truth snapshots.
 
-AI-assisted mechanisms must not independently:
-- authorize authoritative organizational action;
-- mutate authoritative basis;
-- authorize disclosure;
-- execute economically significant operations;
-- generate governance Authority.
+Operational organizational state emerges through:
+- replay;
+- temporal applicability;
+- Ruleset interpretation;
+- governance applicability;
+- deterministic derivation.
+
+Reconstruction remains primary architectural mechanism.
 
 ---
 
-## 2.3 Event Commit Boundary
+## 2.2 Deterministic Declarative Reconstruction
 
-Authoritative commit authority remains separate from:
-- AI cognition;
-- analytical rendering;
-- disclosure mechanisms;
-- external communication systems.
+MARS preferentially derives organizational Interpretations through deterministic declarative reconstruction operating upon authoritative basis.
 
-Commit authority exists only through governance-authorized operational pathways.
+Deterministic reconstruction may utilize:
+- relational derivation;
+- SQL Views;
+- deterministic aggregations;
+- temporal filtering;
+- Ruleset applicability;
+- governance applicability.
 
----
-
-## 2.4 Economic Execution Boundary
-
-MARS is not intended to autonomously execute economically significant organizational operations.
-
-MARS may:
-- prepare invoices;
-- prepare payment recommendations;
-- identify overdue obligations;
-- assist operational workflows.
-
-MARS must not independently:
-- execute payments;
-- transfer funds;
-- dispose of assets;
-- create binding liabilities;
-- perform treasury operations.
+Deterministic declarative reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.
 
 ---
 
-## 2.5 Disclosure Boundary
+## 2.3 Append-Only Authoritative Basis
 
-Possession of organizational information does not constitute authorization for disclosure.
+Authoritative organizational basis remains append-only.
 
-Disclosure remains separately governed operational domain.
+Authoritative basis may include:
+- Events;
+- Primitive Transitions;
+- governance records;
+- temporal semantics;
+- Commit Records;
+- Rulesets.
 
-Disclosure mechanisms must operate under:
-- explicit authorization;
-- deterministic recipient mapping;
-- governance Constraints;
-- bounded disclosure scope.
+All authoritative organizational correction occurs through additive extension.
 
----
-
-# 3. AI Placement Principles
-
-## 3.1 AI-Permitted Operational Domains
-
-AI-assisted mechanisms may operate within bounded domains including:
-- OCR;
-- extraction;
-- classification;
-- anomaly identification;
-- ambiguity detection;
-- interpretive assistance;
-- reconstruction assistance;
-- analytical assistance.
-
-Scenario generation may occur through:
-- bounded simulation;
-- variable modification;
-- hypothetical reconstruction.
+Destructive mutation of authoritative historical basis is prohibited.
 
 ---
 
-## 3.2 AI-Prohibited Operational Domains
+## 2.4 Derived Interpretation Layer
 
-AI-assisted mechanisms must not independently perform:
-- unrestricted disclosure;
-- treasury execution;
-- Authority generation;
-- destructive basis mutation;
-- governance override;
-- authoritative conflict arbitration;
-- authoritative commit authorization.
+Interpretations remain:
+- derived;
+- non-authoritative;
+- regenerable;
+- reconstructable;
+- disposable.
 
----
+Interpretations emerge from:
+- authoritative basis;
+- Rulesets;
+- temporal applicability;
+- governance applicability;
+- Scenario context.
 
-## 3.3 AI Operational Principle
-
-AI within MARS operates under principle:
-
-Perform only explicitly permitted bounded actions.
-
-Actions not explicitly permitted remain prohibited.
+Interpretations must not become authoritative replay dependencies.
 
 ---
 
-# 4. Architectural Principles
+## 2.5 Separation of Authoritative and Derived Domains
 
-## 4.1 Append-Only Authoritative Basis
+MARS explicitly separates:
+- authoritative organizational basis;
+- derived analytical structures;
+- replay artifacts;
+- disclosure artifacts;
+- Scenario structures;
+- AI analytical outputs.
 
-Authoritative organizational basis evolves through additive extension.
-
-Destructive mutation of authoritative organizational history is prohibited.
-
----
-
-## 4.2 Separation of Reconstruction and Disclosure
-
-Ability to reconstruct Interpretation does not imply authorization to disclose Interpretation.
-
-Disclosure remains separately governed architectural domain.
+Derived structures must not independently mutate authoritative organizational basis.
 
 ---
 
-## 4.3 Bounded Automation
+# 3. Replay Architecture
 
-Automation within MARS must remain:
-- explicitly scoped;
+## 3.1 Replay Definition
+
+Replay represents deterministic reconstruction execution procedure.
+
+Replay:
+- reconstructs organizational state;
+- applies temporal semantics;
+- applies Rulesets;
+- applies governance semantics;
+- derives Interpretations.
+
+Replay remains:
+- deterministic;
 - reconstructable;
 - governance-bounded;
-- attributable.
+- side-effect isolated.
 
 ---
 
-## 4.4 Default-Deny Capability Model
-
-Operational actions not explicitly authorized must remain prohibited.
-
----
-
-## 4.5 Deterministic Disclosure Perimeter
-
-Disclosure mechanisms should operate through:
-- deterministic delivery;
-- explicit recipient mapping;
-- governance-bounded outputs;
-- minimized disclosure surface area.
-
----
-
-## 4.6 Reconstruction over Convenience
-
-Architectural decisions should prioritize:
-- reconstructability;
-- replayability;
-- governance traceability;
-- deterministic regeneration
-
-over operational convenience.
-
----
-
-## 4.7 Governance-First Architecture
-
-Governance Constraints are foundational architectural elements rather than optional overlays.
-
-Architectural design must preserve:
-- bounded Authority;
-- disclosure control;
-- replay traceability;
-- operational attribution.
-
----
-
-# 5. Core System Topology
-
-## 5.1 Input Layer
-
-Responsible for:
-- document ingestion;
-- OCR;
-- extraction;
-- classification;
-- Event proposal generation;
-- external operational input handling.
-
----
-
-## 5.2 Event Layer
-
-Responsible for:
-- Event persistence;
-- Primitive Transition persistence;
-- authoritative commit handling;
-- append-only historical storage;
-- temporal registration.
-
----
-
-## 5.3 Operational Reconstruction Engine
-
-Responsible for:
-- replay;
-- deterministic reconstruction;
-- operational balance regeneration;
-- reconstruction dependency resolution;
-- snapshot regeneration.
-
----
-
-## 5.4 Ruleset Engine
-
-Responsible for:
-- Ruleset execution;
-- interpretive derivation;
-- valuation logic;
-- analytical classification;
-- reconstruction applicability handling.
-
----
-
-## 5.5 Interpretation Engine
-
-Responsible for:
-- Interpretation rendering;
-- analytical reconstruction;
-- disclosure-oriented representation generation;
-- interpretive coexistence handling.
-
----
-
-## 5.6 Workflow Engine
-
-Responsible for:
-- bounded operational automation;
-- escalation routing;
-- governance-aware process coordination;
-- deterministic operational sequencing.
-
----
-
-## 5.7 Governance Layer
-
-Responsible for:
-- authorization;
-- Capability enforcement;
-- disclosure governance;
-- escalation handling;
-- delegation handling;
-- override handling.
-
----
-
-## 5.8 Disclosure Layer
-
-Responsible for:
-- report generation;
-- bounded disclosure delivery;
-- deterministic recipient mapping;
-- disclosure isolation;
-- detached disclosure artifact generation.
-
----
-
-## 5.9 Scenario Engine
-
-Responsible for:
-- hypothetical reconstruction;
-- variable modification;
-- scenario replay;
-- analytical simulation;
-- non-authoritative projection generation.
-
----
-
-## 5.10 Audit Layer
-
-Responsible for:
-- attribution;
-- governance reconstruction;
-- replay traceability;
-- operational auditability;
-- historical reconstruction diagnostics.
-
----
-
-## 5.11 Communication Layer
-
-Responsible for:
-- escalation communication;
-- bounded notification delivery;
-- operational messaging;
-- governance-aware communication routing.
-
----
-
-# 6. Event Flow Architecture
-
-## 6.1 Canonical Operational Flow
-
-Canonical organizational processing flow:
-
-Document
-→ OCR
-→ Classification
-→ Event Proposal
-→ Validation
-→ Governance Check
-→ Authoritative Commit
-→ Replay
-→ Interpretation
-→ Reporting
-→ Controlled Delivery
-
----
-
-## 6.2 Event Proposal Stage
-
-Input processing may generate:
-- proposed Events;
-- proposed Primitive Transitions;
-- ambiguity markers;
-- reconstruction triggers.
-
-Proposal generation does not itself constitute authoritative organizational mutation.
-
----
-
-## 6.3 Validation Stage
-
-Validation may include:
-- document verification;
-- Ruleset applicability validation;
-- governance Constraint validation;
-- operational consistency checks;
-- ambiguity detection.
-
----
-
-## 6.4 Governance Check Stage
-
-Governance verification determines:
-- authorization sufficiency;
-- disclosure applicability;
-- escalation requirements;
-- operational permissibility.
-
----
-
-## 6.5 Authoritative Commit Stage
-
-Authoritative commit:
-- persists authoritative organizational basis;
-- establishes reconstructable historical continuity;
-- registers temporal semantics;
-- enables replay eligibility.
-
----
-
-## 6.6 Replay and Reconstruction Stage
-
-Replay regenerates reconstructed organizational representations following authoritative basis change.
-
-Replay may trigger:
-- balance regeneration;
-- Interpretation regeneration;
-- analytical recalculation;
-- snapshot invalidation;
-- report regeneration.
-
----
-
-## 6.7 Controlled Disclosure Stage
-
-Disclosure outputs must remain:
-- bounded;
-- attributable;
-- governance-authorized;
-- reconstructable.
-
-Reports should exist as detached disclosure artifacts rather than live organizational queries.
-
----
-
-# 7. Storage Philosophy
-
-## 7.1 Authoritative Basis Priority
-
-Storage architecture prioritizes preservation of authoritative basis rather than preservation of derived representations.
-
-Derived artifacts remain regenerable through deterministic reconstruction.
-
----
-
-## 7.2 Reconstruction Sufficiency Principle
+## 3.2 Replay Inputs
+
+Replay may utilize:
+- authoritative Events;
+- Primitive Transitions;
+- Rulesets;
+- governance applicability;
+- temporal applicability;
+- Scenario assumptions where applicable.
 
 Authoritative basis alone must remain sufficient for deterministic reconstruction.
 
-Loss of:
-- reports;
-- snapshots;
-- cached Interpretations;
-- analytical artifacts
+---
 
-must not compromise reconstructability.
+## 3.3 Replay Boundaries
+
+Replay procedures must not independently:
+- execute operational workflows;
+- trigger payments;
+- activate messaging;
+- mutate external systems;
+- authorize disclosure;
+- operationalize Proposals.
+
+Replay reconstructs organizational state rather than executing organizational operations.
 
 ---
 
-## 7.3 Immutable Historical Preservation
+## 3.4 Replay Ordering
 
-Authoritative historical basis remains append-only and reconstructable across time.
+Replay ordering must remain:
+- deterministic;
+- reconstructable;
+- temporally attributable;
+- governance-compatible.
 
-Correction occurs through:
-- additive Events;
-- compensating Primitive Transitions;
-- reinterpretation;
-- governance-authorized extension.
+Replay ordering may derive from:
+- commit chronology;
+- temporal semantics;
+- immutable ordering metadata;
+- replay sequencing structures.
+
+Timestamp semantics alone may be insufficient under concurrent or retroactive insertion conditions.
 
 ---
 
-## 7.4 Temporal Preservation
+## 3.5 Replay Safety
 
-Storage architecture must preserve:
+Replay contexts must remain isolated from operational execution environments.
+
+Replay execution must never independently activate external operational side effects.
+
+Replay procedures must remain:
+- read-oriented;
+- reconstruction-oriented;
+- governance-bounded;
+- externally isolated.
+
+---
+
+# 4. Governance Architecture
+
+## 4.1 Governance Principle
+
+Governance within MARS represents reconstructable organizational authority structure rather than operational runtime access.
+
+Governance remains:
+- explicit;
+- attributable;
+- reconstructable;
+- temporally scoped.
+
+Absence of explicit authorization constitutes prohibition.
+
+---
+
+## 4.2 Governance Authority
+
+Governance Authority determines:
+- authoritative commit eligibility;
+- disclosure authorization;
+- escalation responsibility;
+- delegation applicability;
+- replay authorization;
+- operational permission boundaries.
+
+Governance Authority remains distinct from:
+- technical capability;
+- runtime access;
+- AI cognition;
+- operational proximity.
+
+Operational capability alone does not constitute governance authorization.
+
+---
+
+## 4.3 Human Controller Principle
+
+Human Controllers remain responsible for governance-significant organizational decisions not safely reducible to deterministic reconstruction.
+
+Human Controllers may:
+- authorize authoritative commits;
+- resolve ambiguity;
+- authorize disclosure;
+- invoke replay;
+- approve Proposals;
+- issue bounded delegations.
+
+Human Controller authority remains:
+- attributable;
+- reconstructable;
+- temporally scoped;
+- governance-bounded.
+
+---
+
+## 4.4 Delegation Architecture
+
+Delegation within MARS remains:
+- explicit;
+- bounded;
+- revocable;
+- temporally scoped;
+- non-inheritable.
+
+Delegation does not permanently alter underlying governance structure.
+
+Delegation absence constitutes lack of authorization.
+
+---
+
+## 4.5 Escalation Architecture
+
+Escalation routes unresolved ambiguity toward governance-authorized Human Controllers.
+
+Escalation conditions may include:
+- contradictory evidence;
+- missing Rulesets;
+- disclosure uncertainty;
+- governance conflict;
+- replay inconsistency;
+- insufficient authoritative basis.
+
+MARS must prefer bounded refusal over fabricated certainty.
+
+---
+
+# 5. AI Architectural Boundaries
+
+## 5.1 AI Functional Role
+
+AI systems within MARS may perform:
+- OCR extraction;
+- classification;
+- anomaly explanation;
+- legal ambiguity analysis;
+- Proposal generation;
+- analytical commentary;
+- interpretive assistance.
+
+AI-assisted reasoning remains secondary bounded augmentation layer.
+
+---
+
+## 5.2 AI Non-Authority Doctrine
+
+AI systems may not:
+- mutate authoritative basis;
+- authorize disclosure;
+- execute authoritative commits;
+- bypass governance Constraints;
+- independently operationalize organizational actions.
+
+AI cognition never constitutes governance Authority.
+
+---
+
+## 5.3 AI Proposal Boundary
+
+AI-generated outputs remain:
+- non-authoritative;
+- attributable;
+- governance-reviewable;
+- reconstructable where preserved.
+
+AI-generated outputs become organizationally authoritative only through governance-recognized authoritative commit procedures.
+
+---
+
+## 5.4 AI Context Isolation
+
+AI reasoning contexts must remain:
+- disclosure-bounded;
+- governance-bounded;
+- task-bounded;
+- reconstructable where required.
+
+AI runtime contexts must not independently gain unrestricted access to authoritative reconstruction substrate.
+
+---
+
+# 6. Scenario Architecture
+
+## 6.1 Scenario Definition
+
+Scenario represents isolated hypothetical reconstruction branch.
+
+Scenario may:
+- inherit authoritative basis;
+- apply alternate Rulesets;
+- apply hypothetical assumptions;
+- derive hypothetical Interpretations.
+
+Scenario remains:
+- isolated;
+- replay-bounded;
+- non-authoritative;
+- tagged.
+
+---
+
+## 6.2 Scenario Isolation
+
+Scenario replay may read authoritative basis but must never mutate authoritative basis.
+
+Scenario structures must not:
+- contaminate authoritative replay;
+- supersede authoritative basis;
+- become authoritative organizational state;
+- alter authoritative replay ordering.
+
+Scenario isolation must remain reconstructable.
+
+---
+
+## 6.3 Scenario Applicability
+
+Scenario replay may model:
+- future organizational states;
+- legal/regulatory changes;
+- alternate accounting methods;
+- governance changes;
+- hypothetical Events.
+
+Scenario Rulesets remain:
+- isolated;
+- non-authoritative;
+- Scenario-scoped.
+
+---
+
+# 7. Disclosure Architecture
+
+## 7.1 Disclosure Principle
+
+Disclosure within MARS occurs through detached governance-authorized Disclosure Artifacts.
+
+Disclosure Artifacts remain:
+- bounded;
+- detached;
+- non-authoritative;
+- attributable;
+- reconstructable.
+
+Disclosure Artifacts are exports rather than live authoritative replay surfaces.
+
+---
+
+## 7.2 Disclosure Perimeter Isolation
+
+Disclosure structures remain isolated from:
+- authoritative replay substrate;
+- unrestricted reconstruction access;
+- internal replay structures;
+- Scenario replay contexts.
+
+Disclosure perimeter isolation prevents:
+- uncontrolled drill-through;
+- unauthorized disclosure propagation;
+- disclosure contamination of authoritative basis.
+
+---
+
+## 7.3 Recipient Governance
+
+Disclosure eligibility remains governance-controlled.
+
+Recipient authorization remains:
+- explicit;
+- attributable;
+- temporally scoped;
+- reconstructable.
+
+Absence of explicit disclosure authorization constitutes prohibition.
+
+---
+
+# 8. Temporal Architecture
+
+## 8.1 Temporal Applicability
+
+All persistence objects remain temporally scoped.
+
+Temporal applicability governs:
+- reconstruction participation;
+- governance validity;
+- Ruleset applicability;
+- disclosure eligibility;
+- Scenario participation.
+
+Temporal applicability remains logically independent from identity persistence.
+
+---
+
+## 8.2 Reconstruction Coordinates
+
+Replay reconstruction coordinates may include:
 - Valid Time;
 - Assertion Time;
-- authoritative commit chronology;
-- replay ordering semantics.
+- governance applicability;
+- Scenario scope;
+- replay ordering metadata.
+
+Different reconstruction coordinates may produce different Interpretations.
 
 ---
 
-## 7.5 Separation of Storage Domains
+## 8.3 Temporal Supersession
 
-Storage domains should remain separated between:
-- authoritative basis;
-- replay optimization artifacts;
-- scenario data;
-- disclosure artifacts;
-- cached Interpretations.
+Supersession occurs through:
+- additive correction;
+- revised applicability;
+- corrective Events;
+- superseding structures.
 
----
-
-## 7.6 Scenario Isolation
-
-Scenario storage must remain isolated from authoritative organizational basis.
-
-Scenario outputs must remain explicitly identifiable as non-authoritative.
+Temporal supersession must not destructively erase historical reconstructability.
 
 ---
 
-## 7.7 Detached Disclosure Artifacts
+# 9. Architectural Direction
 
-Reports and disclosure artifacts should remain detached from live authoritative basis following authorized generation.
+MARS architecture preferentially utilizes:
+- deterministic declarative reconstruction;
+- relational derivation;
+- append-only authoritative basis;
+- explicit governance semantics;
+- replay-safe execution boundaries;
+- isolated disclosure perimeters;
+- bounded AI augmentation.
 
-Detached disclosure artifacts minimize:
-- unauthorized visibility;
-- disclosure leakage;
-- uncontrolled interpretive exposure.
+The architecture intentionally minimizes:
+- opaque procedural state;
+- autonomous AI authority;
+- mutable authoritative truth snapshots;
+- uncontrolled operational side effects;
+- implicit governance assumptions.
+
+The architecture prioritizes:
+- reconstructability;
+- auditability;
+- replay reproducibility;
+- governance traceability;
+- deterministic derivation;
+- organizational explainability.

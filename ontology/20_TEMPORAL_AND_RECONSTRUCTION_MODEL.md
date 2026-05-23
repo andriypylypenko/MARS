@@ -1,8 +1,9 @@
 # 20_TEMPORAL_AND_RECONSTRUCTION_MODEL
 
-Status: Draft v2  
-Confidence: Medium-High  
-Authority: Temporal Semantics and Reconstruction Semantics  
+Status: Canonical Draft  
+Confidence: High  
+Authority: Temporal and Reconstruction Doctrine
+
 Depends On:
 - 16_OPERATIONAL_ONTOLOGY.md
 - 17_CORE_SYSTEM_ARCHITECTURE.md
@@ -13,845 +14,606 @@ Depends On:
 
 # 1. Purpose
 
-This document defines:
-- temporal semantics;
+This document defines temporal semantics and deterministic reconstruction model within MARS.
+
+The model defined here establishes:
 - replay semantics;
-- reconstruction semantics;
+- temporal applicability semantics;
+- deterministic reconstruction doctrine;
+- replay ordering principles;
 - reinterpretation semantics;
-- deterministic reconstruction principles;
-- snapshot semantics;
-- Scenario replay semantics;
-- reconstruction governance.
+- supersession semantics;
+- Scenario replay isolation;
+- reconstruction boundaries.
 
-This document establishes how MARS reconstructs organizational representations across time from authoritative basis.
-
-This document does not define:
-- implementation-specific storage engines;
-- database schema;
-- transport protocols;
-- replay engine implementation details.
+This document defines reconstruction semantics rather than implementation-specific replay mechanisms.
 
 ---
 
-# 2. Reconstruction, Replay and Reinterpretation
+## Canonical Architectural Invariants
 
-## 2.1 Reconstruction
+Unless explicitly overridden by narrower domain semantics, the following invariants apply throughout MARS:
 
-Reconstruction represents deterministic derivation of organizational representations from:
+- authoritative basis immutable;
+- organizational correction additive;
+- Interpretations derived and non-authoritative;
+- replay deterministic and reconstructable;
+- AI systems non-authoritative;
+- governance explicit and default-deny;
+- Scenarios isolated from authoritative basis;
+- disclosure detached from authoritative reconstruction substrate;
+- authoritative basis sufficient for deterministic reconstruction.
+
+---
+
+# 2. Foundational Reconstruction Principles
+
+## 2.1 Reconstruction Doctrine
+
+Organizational state within MARS is reconstructed rather than persistently maintained as mutable truth snapshot.
+
+Reconstruction derives organizational state from:
 - authoritative basis;
-- Rulesets;
-- governance context;
-- temporal coordinates.
+- temporal applicability;
+- Ruleset applicability;
+- governance applicability;
+- replay coordinates;
+- Scenario assumptions where applicable.
+
+Deterministic declarative reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.
 
 ---
 
-## 2.2 Replay
+## 2.2 Replay Definition
 
-Replay represents sequential deterministic re-execution of authoritative basis through reconstruction pipeline.
+Replay represents deterministic reconstruction execution procedure.
 
-Replay may occur due to:
-- late-arriving Events;
-- corrective Events;
-- snapshot regeneration;
-- audit reconstruction;
-- deterministic recovery;
-- Scenario activation;
-- authoritative basis extension.
+Replay:
+- reconstructs organizational state;
+- applies temporal semantics;
+- applies Rulesets;
+- applies governance applicability;
+- derives Interpretations.
 
-Replay does not itself imply reinterpretation.
-
----
-
-## 2.3 Reinterpretation
-
-Reinterpretation represents derivation of new Interpretations from unchanged authoritative basis through application of:
-- different Rulesets;
-- revised interpretive logic;
-- revised valuation models;
-- revised analytical context.
-
-Reinterpretation alters rendered representations without altering authoritative organizational basis.
+Replay remains:
+- deterministic;
+- reconstructable;
+- governance-bounded;
+- side-effect isolated.
 
 ---
 
-# 3. Which Basis Participates in Replay?
+## 2.3 Reconstruction Inputs
 
-## 3.1 Replay Basis
-
-Replay within MARS operates exclusively upon authoritative reconstructable organizational basis.
-
-Replay-participating basis may include:
+Reconstruction may utilize:
 - authoritative Events;
 - Primitive Transitions;
-- governance records;
-- authorization records;
-- temporal semantics;
-- authoritative operational records.
+- Rulesets;
+- governance applicability;
+- temporal applicability;
+- replay ordering metadata;
+- Scenario assumptions where authorized.
 
-Replay must operate only upon:
-- authoritative;
-- committed;
-- reconstructable
-
-organizational basis components.
+Authoritative basis alone must remain sufficient for deterministic reconstruction.
 
 ---
 
-## 3.2 Non-Participating Artifacts
+## 2.4 Reconstruction Outputs
 
-Replay must not depend upon:
-- cached representations;
-- temporary projections;
-- transient computational state;
-- previously rendered reports;
-- non-authoritative analytical outputs;
-- snapshots;
-- disclosure artifacts.
-
-Deterministic replay must remain capable of reconstructing:
-- operational representations;
-- governance reconstruction;
+Reconstruction may derive:
 - Interpretations;
-- historical organizational condition
+- balances;
+- governance applicability;
+- disclosure eligibility;
+- Scenario projections;
+- analytical summaries.
 
-from authoritative basis alone.
-
----
-
-# 4. How are Late-Arriving Events Handled?
-
-## 4.1 Bitemporal Semantics
-
-MARS supports late-arriving authoritative Events through explicit bitemporal semantics.
-
-Late-arriving Events may possess:
-- Valid Time located in historical organizational timeline;
-- Assertion Time corresponding to later recognition,
-  registration or authoritative commit within MARS.
+Reconstruction outputs remain:
+- derived;
+- non-authoritative;
+- regenerable;
+- disposable.
 
 ---
 
-## 4.2 Additive Historical Extension
+## 2.5 Reconstruction Boundaries
 
-Late-arriving Events do not destructively modify historical organizational basis.
+Reconstruction procedures must not independently:
+- mutate authoritative basis;
+- authorize disclosure;
+- operationalize Proposals;
+- execute workflows;
+- activate external side effects.
 
-Instead, newly asserted authoritative basis is additively committed together with:
-- applicable temporal semantics;
-- governance reconstruction;
-- authoritative commit chronology.
+Replay reconstructs organizational state rather than operationalizing organizational activity.
 
 ---
 
-## 4.3 Replay Following Late Assertion
+# 3. Replay Semantics
 
-Following authoritative commit of late-arriving Events:
-- replay may be automatically triggered;
-- applicable Rulesets may be re-applied;
-- historical reconstructions may be recalculated;
-- Interpretations may be regenerated.
+## 3.1 Deterministic Replay
 
-Replay resulting from late-arriving Events must remain:
+Replay must remain:
 - deterministic;
-- historically traceable;
-- temporally reconstructable;
-- governance-reconstructable.
+- reconstructable;
+- attributable;
+- temporally reproducible.
 
----
-
-## 4.4 Historical Knowledge-State Reconstruction
-
-Historical organizational knowledge state must remain reconstructable using:
-- Valid Time;
-- Assertion Time;
-- authoritative commit ordering;
-- applicable Rulesets;
-- governance context.
-
----
-
-# 5. What Happens When Rulesets Change?
-
-## 5.1 Ruleset Evolution
-
-Ruleset evolution does not destructively modify authoritative organizational basis.
-
-Changes to Rulesets affect:
-- interpretive derivation;
-- analytical representation;
-- valuation logic;
-- disclosure representation;
-- reconstruction outputs.
-
-Authoritative basis remains historically continuous and immutable.
-
----
-
-## 5.2 Simultaneous Ruleset Activity
-
-Multiple Rulesets may remain simultaneously active.
-
-Different Rulesets may produce different:
-- Interpretations;
-- valuations;
-- categorizations;
-- analytical representations;
-- disclosure outputs
-
-from identical authoritative basis.
-
-Interpretive plurality does not constitute contradiction provided:
-- applicable Rulesets remain explicit;
-- reconstruction traceability remains preserved;
-- derivation context remains reconstructable.
-
----
-
-## 5.3 Ruleset Validity Windows
-
-Rulesets possess explicit validity periods defining:
-- applicability intervals;
-- interpretive activation periods;
-- supersession chronology;
-- governance authorization periods.
-
-Historical reconstruction must apply Rulesets valid for reconstructed temporal context.
-
-Ruleset validity semantics must remain reconstructable.
-
----
-
-## 5.4 Historical Reconstruction Under Prior Rulesets
-
-Historical Interpretations must remain regenerable using:
+Identical:
 - authoritative basis;
-- historical Rulesets;
-- historical governance context;
-- temporal reconstruction coordinates.
+- Rulesets;
+- replay coordinates;
+- governance applicability;
+- Scenario assumptions
 
-MARS must remain capable of reconstructing:
-- prior analytical representations;
-- prior disclosure outputs;
-- prior valuation Interpretations;
-- prior governance-visible organizational condition.
+must derive identical Interpretations.
 
 ---
 
-## 5.5 Regeneration vs Historical Freezing
+## 3.2 Replay Participation
 
-Interpretive representations are regenerable rather than permanently frozen artifacts.
+Replay participation may include:
+- Events;
+- Primitive Transitions;
+- Rulesets;
+- governance applicability;
+- temporal applicability;
+- replay ordering structures.
 
-Historical Interpretations may therefore be re-derived through deterministic reconstruction using:
-- preserved basis;
-- preserved Rulesets;
-- preserved temporal semantics;
-- preserved governance context.
-
-Regenerated historical Interpretations must remain deterministically reproducible under identical reconstruction conditions.
+Interpretations, snapshots and disclosure artifacts must not become authoritative replay dependencies.
 
 ---
 
-# 6. Deterministic Reconstruction
+## 3.3 Replay Ordering
+
+Replay ordering must remain:
+- deterministic;
+- reconstructable;
+- temporally attributable;
+- governance-compatible.
+
+Replay ordering may derive from:
+- commit chronology;
+- immutable ordering metadata;
+- replay sequencing structures;
+- temporal semantics.
+
+Timestamp semantics alone may be insufficient under concurrent or retroactive insertion conditions.
+
+---
+
+## 3.4 Replay Safety
+
+Replay contexts must remain isolated from operational execution environments.
+
+Replay execution must never independently activate:
+- payments;
+- messaging;
+- workflows;
+- external APIs;
+- disclosure delivery;
+- operational execution.
+
+Replay remains reconstruction procedure rather than execution mechanism.
+
+---
+
+## 3.5 Replay Regeneration
+
+Derived structures may be regenerated through deterministic replay.
+
+Replay regeneration may reconstruct:
+- balances;
+- Interpretations;
+- replay cache;
+- disclosure artifacts;
+- visualization structures.
+
+Loss of derived structures must not compromise authoritative reconstructability.
+
+---
+
+# 4. Temporal Semantics
+
+## 4.1 Temporal Applicability
+
+All persistence objects within MARS remain temporally scoped.
+
+Temporal applicability governs:
+- replay participation;
+- Ruleset applicability;
+- governance validity;
+- disclosure eligibility;
+- Scenario participation.
+
+Temporal applicability remains logically independent from identity persistence.
+
+---
+
+## 4.2 Valid Time
+
+Valid Time represents period during which organizational structure remains operationally effective.
+
+Valid Time participates within:
+- accounting reconstruction;
+- legal applicability;
+- governance applicability;
+- disclosure applicability;
+- replay reconstruction.
+
+---
+
+## 4.3 Assertion Time
+
+Assertion Time represents period during which organizational structure became recognized or asserted within MARS.
+
+Assertion Time supports:
+- retroactive insertion;
+- delayed recognition;
+- knowledge-state reconstruction;
+- governance traceability.
+
+---
+
+## 4.4 Commit Chronology
+
+Commit chronology represents governance-recognized authoritative mutation ordering.
+
+Commit chronology participates within:
+- replay ordering;
+- governance reconstruction;
+- authoritative mutation sequencing;
+- historical reconstructability.
+
+Commit chronology remains distinct from operational occurrence chronology.
+
+---
+
+## 4.5 Default Applicability
+
+Where explicit applicability intervals are absent, persistence objects default to effectively unbounded operational applicability interval.
+
+Canonical default interval:
+
+```text
+01/01/1901 — 12/31/3001
+```
+
+or equivalent effectively unbounded applicability semantics.
+
+---
+
+# 5. Interpretive Reconstruction
+
+## 5.1 Interpretation Derivation
+
+Interpretation derives from:
+
+```text
+Interpretation =
+f(
+  authoritative basis,
+  applicable Rulesets,
+  temporal coordinate,
+  governance context,
+  Scenario context
+)
+```
+
+Interpretation remains:
+- derived;
+- non-authoritative;
+- replay-generated;
+- regenerable.
+
+---
+
+## 5.2 Ruleset Applicability
+
+Ruleset applicability may depend upon:
+- temporal coordinates;
+- governance scope;
+- disclosure context;
+- Scenario applicability;
+- organizational applicability.
+
+Different Rulesets may derive different Interpretations from identical authoritative basis.
+
+---
+
+## 5.3 Reinterpretation
+
+Reinterpretation represents replay-derived regeneration under different:
+- Rulesets;
+- temporal coordinates;
+- governance applicability;
+- Scenario assumptions.
+
+Reinterpretation does not independently mutate authoritative basis.
+
+---
+
+## 5.4 Interpretive Plurality
+
+MARS permits multiple valid Interpretations from identical authoritative basis where:
+- Rulesets differ;
+- temporal applicability differs;
+- governance applicability differs;
+- Scenario assumptions differ.
+
+Interpretive plurality does not imply authoritative inconsistency.
+
+---
+
+## 5.5 Interpretive Independence
+
+Interpretations remain disposable regenerable replay-derived structures.
+
+Interpretations must not become:
+- authoritative basis;
+- replay ordering substrate;
+- governance authority structures;
+- mandatory persistence dependencies.
+
+---
+
+# 6. Deterministic Reconstruction Doctrine
 
 ## 6.1 Deterministic Reconstruction Axiom
 
-Deterministic reconstruction within MARS requires that:
+MARS preferentially derives organizational Interpretations through deterministic declarative reconstruction operating upon authoritative basis.
 
-same authoritative basis
-+
-same applicable Rulesets
-+
-same governance context
-+
-same temporal coordinates
-=
-same reconstructed result.
+Deterministic reconstruction may utilize:
+- relational derivation;
+- SQL Views;
+- deterministic aggregations;
+- temporal filtering;
+- Ruleset applicability;
+- governance applicability.
+
+AI-assisted analytical reasoning does not independently alter deterministic authoritative reconstruction semantics.
 
 ---
 
-## 6.2 Deterministic Reconstruction Guarantees
+## 6.2 Reconstruction Sufficiency
 
-Deterministic reconstruction guarantees that identical reconstruction conditions produce identical:
-- operational representations;
+Authoritative basis alone must remain sufficient for deterministic replay and reconstruction.
+
+Derived structures including:
 - Interpretations;
 - balances;
-- governance-visible state;
-- disclosure representations.
+- replay cache;
+- disclosure artifacts;
+- Scenario projections;
+- AI analytical outputs
+
+must not become mandatory replay dependencies.
 
 ---
 
-## 6.3 Deterministic Reconstruction Dependencies
+## 6.3 Additive Correction
 
-Deterministic reconstruction depends upon preservation of:
-- authoritative Events;
-- Primitive Transitions;
-- Rulesets;
-- temporal semantics;
-- governance reconstruction;
-- applicable Constraints.
-
-Changes to:
-- authoritative basis;
-- Rulesets;
-- governance context;
-- temporal coordinates
-
-may produce different reconstructed representations.
-
----
-
-## 6.4 Permitted Interpretive Variation
-
-Deterministic reconstruction does not prohibit:
-- interpretive plurality;
-- Scenario modelling;
-- probabilistic forecasting;
-- alternative analytical representations
-
-provided reconstruction conditions remain explicit and reconstructable.
-
----
-
-# 7. Snapshot Semantics
-
-## 7.1 Snapshot Definition
-
-Snapshots within MARS represent derived, non-authoritative reconstructable representations generated from authoritative basis.
-
-Snapshots may exist for:
-- replay optimization;
-- performance acceleration;
-- cached reconstruction;
-- reporting;
-- analytical rendering;
-- disclosure generation.
-
-Snapshots do not constitute authoritative organizational basis.
-
----
-
-## 7.2 Snapshot Regenerability
-
-Authoritative reconstruction must remain possible without dependency upon preserved snapshots.
-
-Snapshots are disposable and regenerable.
-
-Loss, invalidation or regeneration of snapshots must not compromise:
-- authoritative historical basis;
-- replay capability;
-- deterministic reconstruction;
-- governance traceability.
-
-Snapshots may be regenerated through deterministic replay using:
-- authoritative basis;
-- Rulesets;
-- governance context;
-- temporal semantics.
-
----
-
-## 7.3 Snapshot Invalidation
-
-Replay-triggering basis changes may invalidate:
-- existing snapshots;
-- cached representations;
-- derived analytical artifacts;
-- rendered Interpretations.
-
-Invalidated snapshots may be regenerated through replay.
-
----
-
-## 7.4 Reports as Snapshots
-
-Reports represent fixed disclosure-oriented snapshots of reconstructed organizational representations under:
-- specified temporal coordinates;
-- specified Rulesets;
-- specified governance context.
-
-Reports may therefore be reproducibly regenerated through deterministic reconstruction under identical conditions.
-
----
-
-## 7.5 Snapshot Traceability
-
-Snapshots inherit reconstruction traceability from:
-- authoritative basis;
-- applicable Rulesets;
-- governance context;
-- temporal reconstruction coordinates.
-
-Snapshots do not require independent authoritative history outside reconstruction metadata necessary for regeneration and traceability.
-
----
-
-# 8. Scenario Replay Semantics
-
-## 8.1 Scenario Definition
-
-Scenarios within MARS represent isolated non-authoritative interpretive simulation contexts.
-
-Scenarios do not constitute authoritative organizational basis.
-
-Scenarios must remain:
-- logically isolated;
-- governance-isolated;
-- reconstructably distinguishable
-
-from authoritative organizational history.
-
----
-
-## 8.2 Scenario Basis
-
-Scenarios may inherit authoritative organizational basis as opening reconstruction state including:
-- authoritative basis;
-- applicable Rulesets;
-- governance context;
-- temporal reconstruction coordinates.
-
-Scenario initialization therefore represents interpretive derivation from authoritative basis rather than authoritative basis mutation.
-
----
-
-## 8.3 Scenario Modification
-
-Scenario evolution occurs through:
-- variable modification;
-- assumption modification;
-- hypothetical Event insertion;
-- interpretive parameter modification;
-- analytical adjustment.
-
-Scenario modification does not alter authoritative organizational basis.
-
----
-
-## 8.4 Scenario Interpretation
-
-Scenario replay always produces:
-- non-authoritative Interpretations;
-- hypothetical organizational representations;
-- analytical projections;
-- forecasted conditions.
-
-Scenario outputs remain interpretive representations only.
-
-Scenarios must not produce authoritative organizational history.
-
----
-
-## 8.5 Scenario Isolation
-
-Scenario-associated data must remain explicitly isolated from authoritative basis.
-
-Isolation mechanisms may include:
-- Scenario identifiers;
-- isolated reconstruction context;
-- separate interpretive namespace;
-- governance-separated replay context.
-
-Scenario replay must not contaminate:
-- authoritative replay;
-- authoritative balances;
-- authoritative governance reconstruction;
-- authoritative disclosure outputs.
-
----
-
-## 8.6 Scenario Determinism
-
-Scenario replay remains deterministic under:
-- identical authoritative basis;
-- identical Scenario variables;
-- identical assumptions;
-- identical Rulesets;
-- identical temporal reconstruction coordinates.
-
----
-
-# 9. Interpretive Replay
-
-## 9.1 Interpretive Replay Definition
-
-Interpretive replay within MARS represents deterministic reconstruction of organizational representations under specific interpretive context.
-
-Interpretive replay operates using:
-- authoritative basis;
-- applicable Rulesets;
-- governance context;
-- temporal reconstruction coordinates.
-
----
-
-## 9.2 Ruleset-Specific Replay
-
-Each replay operation executes under single explicitly defined Ruleset context.
-
-Interpretive replay therefore produces organizational representations specific to:
-- selected Ruleset;
-- selected temporal context;
-- selected governance applicability context.
-
----
-
-## 9.3 Interpretive Coexistence
-
-Multiple Interpretations may coexist simultaneously.
-
-Different Rulesets applied to identical authoritative basis may produce different:
-- balances;
-- valuations;
-- categorizations;
-- disclosure representations;
-- analytical outputs.
-
-Interpretive coexistence does not constitute contradiction provided interpretive context remains explicit and reconstructable.
-
----
-
-## 9.4 Interpretive Traceability
-
-Interpretive derivation must remain traceable through:
-- Ruleset identity;
-- reconstruction coordinates;
-- governance applicability context;
-- authoritative basis references.
-
-Interpretive representations must remain reproducibly regenerable under identical reconstruction conditions.
-
----
-
-## 9.5 Interpretive Independence
-
-Interpretations remain independent derived representations.
-
-Interpretive replay does not:
-- modify authoritative basis;
-- alter historical Events;
-- alter Primitive Transitions;
-- mutate authoritative organizational memory.
-
-Interpretive variation affects only:
-- rendered representations;
-- analytical outputs;
-- disclosure-oriented views;
-- interpretive categorizations.
-
----
-
-# 10. Reconstruction Boundaries
-
-## 10.1 Sufficient Basis
-
-Reconstruction within MARS depends upon availability of sufficient authoritative basis.
-
-Sufficient basis exists when reconstruction may deterministically regenerate organizational representations to state where principal organizational controls reconcile including:
-- balances;
-- cashflow representations;
-- bank-reported balances;
-- major operational control totals;
-- governance-visible organizational condition.
-
----
-
-## 10.2 Missing Rulesets
-
-Absence of required Rulesets constitutes critical reconstruction failure.
-
-Interpretive reconstruction requiring unavailable Rulesets must not silently generate substitute representations.
-
-Missing Rulesets must remain explicitly identifiable within reconstruction results and governance diagnostics.
-
----
-
-## 10.3 Partial Reconstruction
-
-Partial reconstruction may occur where:
-- authoritative basis remains incomplete;
-- required Events are unavailable;
-- Rulesets are unavailable;
-- governance context remains unresolved;
-- authoritative assertions remain contradictory.
-
-Partial reconstruction must remain explicitly distinguishable from fully reconstructable organizational representations.
-
----
-
-## 10.4 Ambiguity and Uncertainty
-
-MARS may preserve unresolved:
-- ambiguity;
-- uncertainty;
-- contradictory assertions;
-- incomplete reconstruction conditions.
-
-MARS must not silently fabricate certainty where authoritative basis remains insufficient.
-
-Unresolved reconstruction ambiguity may require:
-- governance escalation;
-- additional evidence;
-- Ruleset clarification;
-- interpretive restriction.
-
----
-
-## 10.5 Reconstruction Traceability
-
-Reconstruction results must remain traceable to:
-- authoritative basis;
-- applicable Rulesets;
-- governance context;
-- temporal reconstruction coordinates;
-- authoritative commit chronology.
-
----
-
-# 11. Replay Ordering and Invocation Semantics
-
-## 11.1 Replay Invocation
-
-Replay within MARS is invoked by authoritative basis change.
-
-Replay-triggering basis changes may include:
-- authoritative Event commit;
-- late-arriving authoritative Events;
+Authoritative organizational correction occurs through:
 - corrective Events;
-- Primitive Transition insertion;
-- Ruleset modification;
-- governance-context modification;
+- revised applicability;
+- superseding structures;
+- additive authoritative mutation.
+
+Destructive historical mutation is prohibited.
+
+---
+
+## 6.4 Historical Continuity
+
+Historical reconstructability must remain preserved across:
+- reinterpretation;
+- supersession;
+- governance evolution;
+- Ruleset evolution;
+- Scenario derivation.
+
+Historical continuity remains higher architectural priority than destructive consistency enforcement.
+
+---
+
+# 7. Supersession Semantics
+
+## 7.1 Supersession Doctrine
+
+Supersession represents additive authoritative replacement of applicability rather than destructive erasure.
+
+Supersession may occur through:
+- corrective Events;
+- revised applicability;
+- superseding structures;
+- governance-authorized reinterpretation.
+
+---
+
+## 7.2 Supersession Preservation
+
+Superseded structures remain:
+- reconstructable;
+- attributable;
+- replay-visible;
+- historically persistent.
+
+Supersession must not erase authoritative historical continuity.
+
+---
+
+## 7.3 Interpretive Supersession
+
+Interpretive supersession may occur where:
+- Rulesets evolve;
+- governance applicability changes;
 - temporal applicability changes;
-- authoritative basis extension.
+- Scenario assumptions diverge.
 
-Replay represents deterministic regeneration of reconstructable organizational representations following authoritative basis change.
-
----
-
-## 11.2 Replay Ordering
-
-Replay ordering semantics are determined primarily by:
-- Valid Time;
-- authoritative commit chronology;
-- Assertion Time;
-- applicable Ruleset validity periods;
-- governance applicability context.
+Interpretive supersession does not independently mutate authoritative basis.
 
 ---
 
-## 11.3 Replay Effects
+# 8. Scenario Replay Model
 
-Replay may regenerate:
-- operational representations;
-- balances;
-- Interpretations;
-- disclosure representations;
-- governance-visible organizational condition.
+## 8.1 Scenario Replay
 
-Replay does not destructively modify authoritative historical basis.
+Scenario replay represents isolated hypothetical reconstruction branch.
 
-Replay affects only:
-- reconstructed outputs;
-- interpretive representations;
-- derived analytical artifacts.
+Scenario replay may:
+- inherit authoritative basis;
+- apply alternate Rulesets;
+- apply hypothetical assumptions;
+- derive hypothetical Interpretations.
 
----
-
-# 12. Replay Scope and Incrementality
-
-## 12.1 Replay Scope
-
-Replay scope within MARS is derived from authoritative basis change.
-
-Replay may therefore affect:
-- individual Interpretations;
-- historical reconstruction intervals;
-- disclosure representations;
-- analytical outputs;
-- Scenario representations;
-- operational balances.
+Scenario replay remains:
+- isolated;
+- tagged;
+- non-authoritative;
+- replay-bounded.
 
 ---
 
-## 12.2 Replay Boundaries
+## 8.2 Scenario Isolation
 
-Replay regeneration boundaries are determined by:
-- affected Valid Time intervals;
-- affected Rulesets;
-- affected governance context;
-- affected authoritative Events;
-- affected Primitive Transitions.
+Scenario replay may read authoritative basis but must never mutate authoritative basis.
+
+Scenario replay must not:
+- contaminate authoritative replay;
+- alter replay ordering;
+- supersede authoritative basis;
+- operationalize hypothetical structures.
 
 ---
 
-## 12.3 Incremental Replay
+## 8.3 Scenario Applicability
 
-Replay may occur incrementally where reconstruction dependencies remain explicitly identifiable and deterministic.
+Scenario replay may model:
+- future organizational states;
+- alternate accounting methods;
+- governance changes;
+- legal/regulatory changes;
+- hypothetical Events.
 
-Replay optimization mechanisms must not compromise:
-- deterministic reconstruction;
-- governance traceability;
+Scenario structures remain:
+- isolated;
+- disposable;
+- analytically bounded;
+- reconstructable.
+
+---
+
+# 9. Governance Reconstruction
+
+## 9.1 Governance Applicability
+
+Replay and reconstruction procedures must apply governance semantics valid during replayed temporal coordinate.
+
+Governance reconstruction may include:
+- authority applicability;
+- delegation applicability;
+- disclosure authorization;
+- escalation responsibility;
+- replay authorization.
+
+---
+
+## 9.2 Governance Traceability
+
+Governance reconstruction must preserve ability to determine:
+- who possessed authority;
+- what delegations applied;
+- what disclosures were authorized;
+- what replay permissions existed
+
+at replayed temporal coordinate.
+
+---
+
+## 9.3 Governance Failure
+
+Where authoritative reconstruction becomes impossible due to:
+- insufficient authoritative basis;
+- contradictory authoritative structures;
+- missing Rulesets;
+- unresolved governance ambiguity
+
+MARS must prefer bounded refusal over fabricated certainty.
+
+---
+
+# 10. Disclosure Reconstruction
+
+## 10.1 Disclosure Participation
+
+Replay and reconstruction procedures may derive:
+- disclosure eligibility;
+- disclosure applicability;
+- disclosure attribution;
+- recipient authorization;
+- disclosure perimeter semantics.
+
+Disclosure structures remain detached from authoritative replay substrate.
+
+---
+
+## 10.2 Disclosure Isolation
+
+Disclosure reconstruction must not independently:
+- resend disclosures;
+- trigger messaging;
+- expand disclosure perimeter;
+- operationalize external communication.
+
+Disclosure replay reconstructs disclosure history rather than re-executing disclosure delivery.
+
+---
+
+# 11. AI Boundaries
+
+## 11.1 AI Participation
+
+AI systems may assist:
+- legal interpretation;
+- OCR extraction;
+- anomaly analysis;
+- Proposal generation;
+- analytical augmentation;
+- ambiguity interpretation.
+
+AI-assisted reasoning remains bounded analytical augmentation layer.
+
+---
+
+## 11.2 AI Non-Authority
+
+AI systems may not:
+- mutate authoritative basis;
+- authorize governance actions;
+- authorize disclosure;
+- bypass replay boundaries;
+- independently operationalize replay outputs.
+
+AI cognition never constitutes governance Authority.
+
+---
+
+# 12. Foundational Architectural Direction
+
+MARS reconstruction architecture preferentially utilizes:
+- deterministic declarative reconstruction;
+- append-only authoritative basis;
 - replay reproducibility;
-- authoritative basis integrity.
-
----
-
-# 13. Reconstruction Governance
-
-## 13.1 Governance Constraints
-
-Replay and reconstruction operations within MARS exist under governance Constraints.
-
-Introduction of new authoritative facts,
-Events or Primitive Transitions may trigger replay automatically.
-
-Interpretive regeneration resulting from:
-- Ruleset modification;
-- authoritative basis extension;
-- temporal applicability changes
-
-may occur automatically through deterministic replay mechanisms.
-
----
-
-## 13.2 Human Governance Authority
-
-Human Controllers retain governance Authority over:
-- authoritative fact acceptance;
-- governance escalation;
-- Ruleset authorization;
-- interpretive applicability;
-- conflict resolution;
-- disclosure authorization.
-
----
-
-## 13.3 Replay Governance Constraints
-
-Replay operations must remain:
-- attributable;
-- reconstructable;
-- governance-traceable;
-- disclosure-aware.
-
-Replay operations must not:
-- silently alter authoritative basis;
-- bypass governance Constraints;
-- independently authorize disclosure;
-- suppress reconstruction ambiguity.
-
----
-
-## 13.4 Replay Auditability
-
-Replay-triggering basis changes and resulting reconstruction effects must remain reconstructable including:
-- triggering authoritative Events;
-- temporal reconstruction context;
-- applicable Rulesets;
-- governance applicability context;
-- regenerated Interpretations.
-
----
-
-# 14. Temporal Conflict Resolution
-
-## 14.1 Conflict Semantics
-
-Authoritative Events representing true organizational occurrences must not logically contradict one another.
-
-Contradictions may nevertheless arise between assertions due to:
-- incomplete authoritative basis;
-- delayed assertions;
-- overlapping validity periods;
-- contradictory external evidence;
-- governance ambiguity;
-- unresolved interpretive conditions.
-
----
-
-## 14.2 Conflict Detection
-
-Detection of:
-- conflicting assertions;
-- overlapping temporal applicability;
-- incompatible reconstruction conditions;
-- unresolved authoritative ambiguity
-
-may trigger governance escalation.
-
-AI-assisted mechanisms may assist:
-- conflict identification;
-- overlap detection;
-- ambiguity classification;
-- reconstruction inconsistency detection.
-
-AI-assisted mechanisms must not independently resolve authoritative governance conflicts.
-
----
-
-## 14.3 Governance Escalation
-
-Unresolved reconstruction conflicts may require:
-- Human Controller review;
-- governance arbitration;
-- additional evidence acquisition;
-- Ruleset clarification;
-- interpretive restriction.
-
----
-
-## 14.4 Ambiguity Preservation
-
-MARS may preserve unresolved ambiguity explicitly.
-
-Conflicting assertions or incomplete reconstruction conditions must not silently produce fabricated certainty.
-
-Ambiguity preservation must remain:
-- reconstructable;
-- attributable;
-- governance-visible.
-
----
-
-# 15. Reconstruction Optimization Principles
-
-## 15.1 Optimization Mechanisms
-
-Optimization mechanisms within MARS may include:
-- snapshots;
-- cached Interpretations;
-- replay acceleration;
-- incremental reconstruction;
-- materialized analytical representations.
-
----
-
-## 15.2 Optimization Constraints
-
-Optimization mechanisms must remain subordinate to:
-- deterministic reconstruction;
-- authoritative basis integrity;
+- temporal applicability semantics;
+- relational derivation;
 - governance traceability;
-- replay reproducibility.
+- additive correction.
 
-Optimization artifacts do not constitute authoritative organizational basis.
+The architecture intentionally minimizes:
+- mutable authoritative truth state;
+- opaque procedural semantics;
+- uncontrolled operational side effects;
+- autonomous AI authority;
+- destructive historical correction.
 
----
-
-## 15.3 Optimization Failure Tolerance
-
-Loss, invalidation or regeneration of optimization artifacts must not compromise:
-- authoritative replay capability;
-- historical reconstruction;
-- governance reconstruction;
-- interpretive reproducibility.
-
----
-
-## 15.4 Optimization Safety Constraints
-
-Optimization mechanisms must not:
-- silently alter authoritative basis;
-- suppress replay-triggering basis changes;
-- conceal reconstruction ambiguity;
-- compromise deterministic regeneration.
-
-Deterministic reconstruction from authoritative basis alone must remain possible independently of optimization artifacts.
+Deterministic declarative reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.

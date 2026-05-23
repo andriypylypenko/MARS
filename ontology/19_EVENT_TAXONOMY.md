@@ -1,8 +1,9 @@
 # 19_EVENT_TAXONOMY
 
-Status: Draft v2  
-Confidence: Medium-High  
-Authority: Event Semantics and Operational Taxonomy  
+Status: Canonical Draft  
+Confidence: High  
+Authority: Canonical Event Doctrine
+
 Depends On:
 - 16_OPERATIONAL_ONTOLOGY.md
 - 17_CORE_SYSTEM_ARCHITECTURE.md
@@ -12,506 +13,552 @@ Depends On:
 
 # 1. Purpose
 
-This document defines:
-- Event semantics;
-- Event taxonomy;
-- Primitive Transition semantics;
-- authoritative commit semantics;
-- temporal Event semantics;
-- governance semantics;
-- replay and reconstruction implications.
+This document defines canonical Event taxonomy and authoritative organizational mutation semantics within MARS.
 
-This document establishes canonical organizational change vocabulary used within MARS.
+The taxonomy defined here establishes:
+- authoritative mutation structures;
+- Event composition semantics;
+- replay participation semantics;
+- governance visibility semantics;
+- temporal applicability structures;
+- reconstruction participation boundaries.
 
-This document does not define:
-- database schema;
-- APIs;
-- transport protocols;
-- implementation-specific storage structures.
+This document defines canonical organizational mutation ontology rather than implementation-specific persistence mechanisms.
+
+---
+
+## Canonical Architectural Invariants
+
+Unless explicitly overridden by narrower domain semantics, the following invariants apply throughout MARS:
+
+- authoritative basis immutable;
+- organizational correction additive;
+- Interpretations derived and non-authoritative;
+- replay deterministic and reconstructable;
+- AI systems non-authoritative;
+- governance explicit and default-deny;
+- Scenarios isolated from authoritative basis;
+- disclosure detached from authoritative reconstruction substrate;
+- authoritative basis sufficient for deterministic reconstruction.
 
 ---
 
 # 2. Foundational Event Principles
 
-## 2.1 What is an Event?
+## 2.1 Event Doctrine
 
-Event represents meaningful organizational occurrence recognized by MARS as producing authoritative reconstructable organizational change.
+Event represents logical organizational occurrence grouping one or more Primitive Transitions.
 
-Events may affect:
-- Resources;
-- Obligations;
-- Commitments;
-- Workflows;
-- governance relationships;
-- Authority structures;
-- disclosure conditions;
-- Operational Accounts;
-- Interpretations;
-- organizational Constraints.
+Event:
+- reconstructable;
+- attributable;
+- temporally scoped;
+- governance-visible;
+- replay-participating.
 
-Events may consist of one or more Primitive Transitions.
-
-Events do not themselves constitute organizational state representations.
-
-Instead, Events contribute to authoritative organizational basis from which:
-- organizational condition;
-- operational representations;
-- balances;
-- Interpretations;
-- governance reconstruction
-
-may later be reconstructed.
-
-Events may be:
-- authoritative;
-- hypothetical;
-- interpretive;
-- operational;
-- governance-related;
-- workflow-related;
-- disclosure-related.
-
-Only authoritative committed Events participate in authoritative organizational basis.
+Event represents authoritative organizational mutation composition structure.
 
 ---
 
-## 2.2 Event vs Primitive Transition
+## 2.2 Primitive Transition Doctrine
 
-Events may be decomposed into one or more Primitive Transitions representing indivisible authoritative mutations affecting:
-- Resources;
-- Obligations;
-- Operational Accounts;
-- Workflows;
-- governance relationships;
-- Commitments;
-- organizational Constraints;
-- disclosure conditions.
+Primitive Transition represents lowest authoritative organizational mutation unit.
 
-Primitive Transitions constitute lowest authoritative replay and reconstruction layer within MARS.
+Primitive Transition:
+- immutable after authoritative commit;
+- reconstructable;
+- temporally scoped;
+- governance-visible;
+- replay-participating.
 
----
-
-## 2.3 Authoritative vs Hypothetical Events
-
-Events within MARS may be classified as:
-- authoritative;
-- hypothetical.
+Primitive Transition exists only within Event structure.
 
 ---
 
-### Authoritative Events
+## 2.3 Event Reconstruction Participation
 
-Authoritative Events represent:
-- recognized;
-- committed;
-- historically reconstructable
-
-organizational occurrences participating in authoritative organizational basis.
-
-Authoritative Events may affect:
-- operational reconstruction;
+Events participate directly within:
+- replay;
+- deterministic reconstruction;
 - governance reconstruction;
-- balances;
-- Obligations;
-- disclosure;
-- organizational memory.
+- disclosure reconstruction;
+- temporal reconstruction;
+- Scenario derivation where authorized.
+
+Events represent authoritative replay substrate.
 
 ---
 
-### Hypothetical Events
+## 2.4 Event Immutability
 
-Hypothetical Events represent:
-- projected;
-- simulated;
-- forecasted;
-- planned;
-- analytically modeled
+Events remain immutable after authoritative commit.
 
-organizational occurrences existing only within explicitly bounded interpretive or Scenario contexts.
+All authoritative organizational correction occurs through additive extension.
 
-Hypothetical Events must remain:
-- logically separated;
-- governance-separated;
-- reconstructably distinguishable
-
-from authoritative organizational basis.
-
-Hypothetical Events must not participate in authoritative organizational history.
-
----
-
-## 2.4 Composite vs Atomic Structure
-
-Events are composed of one or more Primitive Transitions.
-
-Primitive Transitions represent indivisible authoritative mutations affecting particular organizational objects or relationships.
-
-Simplest Event structure consists of single Primitive Transition.
-
-Complex Events may consist of multiple Primitive Transitions representing coordinated organizational change across:
-- Resources;
-- Obligations;
-- Operational Accounts;
-- Workflows;
-- governance structures;
-- disclosure conditions;
-- interpretive structures.
-
-Primitive Transitions constitute lowest authoritative replay and reconstruction layer within MARS.
-
----
-
-## 2.5 Event Commit Semantics
-
-### Authoritative Commit
-
-Event becomes authoritative when:
-- generated from accepted organizational input;
-- or generated through authorized deterministic internal logic;
-- successfully validated;
-- accepted within governance Constraints;
-- committed into authoritative organizational basis.
-
-Authoritative Events may originate from:
-- Documents;
-- operational inputs;
-- Workflow execution;
-- governance actions;
-- deterministic Ruleset execution;
-- authorized internal system logic.
-
-Generation of Event proposals does not itself constitute authoritative organizational mutation.
-
-Authoritative status exists only after:
-- deterministic validation;
-- governance validation where applicable;
-- successful authoritative commit.
-
-Only authoritative committed Events participate in:
-- organizational memory;
-- operational reconstruction;
-- governance reconstruction;
-- authoritative historical basis.
-
----
-
-### Validation Basis
-
-Authoritative Events must possess sufficient validation basis before authoritative commit.
-
-Validation basis may include:
-- admissible organizational Documents;
-- accepted operational inputs;
-- governance authorization;
-- deterministic Ruleset derivation;
-- authorized internal system logic.
-
-Document-based validation requires:
-- identifiable provenance;
-- admissibility within governance Constraints;
-- sufficient operational relevance.
-
-Ruleset-based validation requires:
-- explicit Ruleset attribution;
-- deterministic derivation traceability;
-- governance-authorized Ruleset applicability.
-
-Validation establishes that Event proposal:
-- possesses acceptable organizational basis;
-- satisfies applicable operational Constraints;
-- may participate in authoritative basis.
-
----
-
-### Commit Semantics
-
-Commit represents authoritative acceptance of Event into immutable organizational basis.
-
-Commit establishes that Event:
-- passed applicable validation;
-- satisfied governance Constraints;
-- obtained required authorization;
-- became part of authoritative organizational memory.
-
-Only committed authoritative Events participate in:
-- historical reconstruction;
-- authoritative operational history;
-- governance traceability;
-- authoritative reconstructable basis.
-
-Commit does not require direct external action or immediate economic consequence.
-
-Implementation mechanisms used to realize commit may include:
-- append-only persistence;
-- authoritative Event stores;
-- governance-controlled transactional storage;
-- deterministic replayable recording.
-
-Storage of temporary, hypothetical, rejected or uncommitted Event representations does not constitute authoritative commit.
-
----
-
-### Revocation and Supersession
-
-Authoritative committed Events must not be destructively revoked or removed from authoritative organizational basis.
-
-Historical organizational basis remains immutable following authoritative commit.
-
-Incorrect, obsolete or undesirable Event effects may instead be addressed through:
+Corrective organizational mutation occurs through:
 - corrective Events;
-- compensating Primitive Transitions;
-- superseding Events;
-- reinterpretation under updated Rulesets;
-- governance-authorized additive historical extension.
+- revised applicability;
+- superseding structures;
+- additive authoritative mutation.
 
-Supersession does not erase historical organizational history.
-
-Superseded Events remain reconstructable together with:
-- corrective actions;
-- governance context;
-- interpretive consequences;
-- subsequent organizational effects.
+Historical reconstructability must remain preserved.
 
 ---
 
-## 2.6 Event Immutability
+## 2.5 Commit Semantics
 
-Authoritative committed Events are immutable components of organizational historical basis.
+Authoritative commit establishes immutable participation of committed Event within authoritative organizational basis.
 
-Immutability preserves:
-- historical continuity;
-- governance traceability;
-- deterministic replayability;
-- auditability;
-- reconstructability across time.
+Commit participation preserves:
+- replay visibility;
+- governance attribution;
+- temporal reconstructability;
+- historical continuity.
 
-Immutability applies to:
-- Event identity;
-- authoritative commit existence;
-- historical attribution;
-- commit ordering;
-- committed Primitive Transitions;
-- governance reconstruction.
-
-Authoritative committed Events must not be:
-- destructively modified;
-- silently replaced;
-- retroactively erased;
-- removed from authoritative organizational memory.
-
-Correction of organizational history must occur through:
-- corrective Events;
-- compensating Primitive Transitions;
-- superseding Events;
-- reinterpretation under revised Rulesets;
-- additive governance-authorized extension.
-
-Immutability does not prohibit:
-- reinterpretation;
-- revised analytical representation;
-- corrected operational consequence;
-- superseding governance decisions;
-- updated Ruleset application.
-
-Historical basis and subsequent corrections must remain simultaneously reconstructable.
-
-Hypothetical, proposed, temporary or uncommitted Events do not possess authoritative immutability status until authoritative commit occurs.
+Commit establishes governance-recognized authoritative mutation acceptance.
 
 ---
 
-## 2.7 Event Temporal Semantics
+# 3. Canonical Event Structure
 
-Events within MARS possess explicit temporal semantics supporting:
-- historical reconstruction;
-- replayability;
-- governance traceability;
-- interpretive reconstruction;
-- late-arriving information handling.
+## 3.1 Canonical Relationship
+
+Canonical Event relationship:
+
+```text
+Event 1 → n Primitive Transitions
+Primitive Transition n → 1 Event
+```
+
+Primitive Transition cannot exist without Event.
+
+Event must contain one or more Primitive Transitions.
 
 ---
 
-### Valid Time
+## 3.2 Event Composition
 
-Valid Time represents:
-- time;
-- period;
-- operational interval
-
-during which Event was operationally effective, applicable or true within organizational reality.
-
-Valid Time reflects:
+Event composition may represent:
+- accounting occurrence;
+- governance occurrence;
+- legal occurrence;
+- disclosure occurrence;
 - operational occurrence;
-- economic applicability;
+- organizational mutation grouping.
+
+Event composition remains logical organizational structure rather than execution mechanism.
+
+---
+
+## 3.3 Event Identity
+
+Event identity remains:
+- stable;
+- reconstructable;
+- attributable;
+- replay-compatible;
+- temporally attributable.
+
+Event identity must not be destructively replaced or recycled.
+
+---
+
+## 3.4 Event Temporal Participation
+
+Events may participate within:
+- Valid Time semantics;
+- Assertion Time semantics;
+- replay ordering;
 - governance applicability;
-- contractual effectiveness;
-- Workflow effectiveness.
+- disclosure applicability;
+- Scenario applicability where authorized.
+
+Temporal supersession does not destroy historical Event reconstructability.
 
 ---
 
-### Assertion Time
+# 4. Primitive Transition Taxonomy
 
-Assertion Time represents:
-- time;
-- period
+## 4.1 Accounting Primitive Transition
 
-during which Event became recognized, accepted, recorded or considered true within MARS.
+Accounting Primitive Transition represents authoritative organizational financial mutation.
 
-Assertion Time reflects:
-- organizational awareness;
-- system registration;
-- authoritative commit chronology;
-- interpretive availability.
+Accounting Primitive Transitions may include:
+- debit structures;
+- credit structures;
+- balance-affecting structures;
+- obligation structures;
+- settlement structures.
 
----
-
-### Temporal Separation
-
-Valid Time and Assertion Time may differ.
-
-Commit ordering within authoritative basis may differ from Valid Time ordering.
-
-This distinction enables reconstruction of:
-- organizational knowledge state;
-- delayed recognition;
-- retroactive corrections;
-- late-arriving evidence;
-- governance timing;
-- interpretive evolution.
+Accounting Primitive Transitions participate directly within deterministic reconstruction of accounting Interpretations.
 
 ---
 
-### Temporal Reconstruction
+## 4.2 Governance Primitive Transition
 
-Historical reconstruction within MARS may depend upon:
-- Valid Time;
-- Assertion Time;
-- commit ordering;
-- Ruleset applicability periods;
-- governance validity periods.
+Governance Primitive Transition represents authoritative governance mutation.
 
-Temporal semantics must remain reconstructable.
+Governance Primitive Transitions may include:
+- authorization issuance;
+- delegation issuance;
+- delegation revocation;
+- escalation assignment;
+- governance override structures.
 
----
-
-## 2.8 Event Governance Semantics
-
-Events within MARS exist under explicit governance Constraints.
-
-Governance semantics determine:
-- authorization requirements;
-- validation requirements;
-- escalation requirements;
-- disclosure restrictions;
-- operational Capability boundaries;
-- interpretive applicability;
-- reconstruction traceability.
+Governance Primitive Transitions participate within governance reconstruction semantics.
 
 ---
 
-### Governance Attribution
+## 4.3 Disclosure Primitive Transition
 
-Authoritative Events must possess:
-- attributable origin;
-- governance context;
-- commit traceability;
-- authorization traceability where applicable.
+Disclosure Primitive Transition represents authoritative disclosure-related organizational mutation.
 
----
+Disclosure Primitive Transitions may include:
+- disclosure authorization;
+- disclosure issuance;
+- disclosure revocation;
+- recipient authorization structures;
+- disclosure perimeter changes.
 
-### Authorization Requirements
-
-Certain Events may require:
-- explicit Human Controller approval;
-- delegated Authority validation;
-- governance escalation;
-- multi-stage Workflow authorization.
-
-Authorization requirements may depend upon:
-- economic significance;
-- disclosure sensitivity;
-- operational impact;
-- governance classification;
-- external legal effect.
+Disclosure Primitive Transitions participate within disclosure reconstruction semantics.
 
 ---
 
-### AI Governance Constraints
+## 4.4 Legal Primitive Transition
 
-AI-assisted mechanisms may:
-- assist Event proposal generation;
-- assist classification;
-- assist ambiguity identification;
-- assist interpretive support.
+Legal Primitive Transition represents authoritative legally relevant organizational mutation.
 
-AI-assisted mechanisms must not:
-- autonomously authorize authoritative Events;
-- bypass governance validation;
-- independently alter authoritative basis;
-- independently disseminate restricted information.
+Legal Primitive Transitions may include:
+- obligation creation;
+- obligation modification;
+- legal applicability mutation;
+- contractual recognition;
+- legal supersession structures.
 
----
-
-### Disclosure Governance
-
-Events may possess:
-- disclosure classification;
-- visibility restrictions;
-- recipient Constraints;
-- governance-controlled dissemination rules.
-
-Possession of Event information within MARS does not constitute authorization for disclosure.
+Legal Primitive Transitions may require:
+- Ruleset interpretation;
+- temporal applicability interpretation;
+- governance interpretation.
 
 ---
 
-### Escalation Semantics
+## 4.5 Operational Primitive Transition
 
-Events encountering:
-- ambiguity;
-- insufficient validation basis;
-- governance conflict;
-- authorization uncertainty;
-- operational inconsistency
+Operational Primitive Transition represents authoritative operational organizational mutation.
 
-may require escalation to Human Controller review.
+Operational Primitive Transitions may include:
+- inventory mutation;
+- workflow recognition;
+- operational state mutation;
+- execution recognition;
+- operational obligation mutation.
 
----
-
-### Governance Reconstruction
-
-Governance context associated with Events must remain reconstructable including:
-- authorization history;
-- escalation history;
-- applicable Rulesets;
-- disclosure restrictions;
-- governance decisions;
-- corrective actions.
+Operational Primitive Transitions represent authoritative operational occurrence recognition rather than runtime execution process.
 
 ---
 
-## 2.9 Event Identity and Referential Integrity
+# 5. Event Taxonomy
 
-Authoritative Events must possess:
-- globally unique persistent identity;
-- immutable authoritative reference identity;
-- reconstructable relationships.
+## 5.1 Accounting Event
 
-Event identities must:
-- remain stable across reconstruction;
-- remain non-reusable;
-- remain attributable;
-- support deterministic replay and auditability.
+Accounting Event groups accounting-related Primitive Transitions.
 
-Events may reference:
-- originating Documents;
-- related Events;
+Accounting Events may include:
+- journal recognition;
+- settlement occurrence;
+- balance-affecting mutation;
+- obligation mutation;
+- reconciliation mutation.
+
+Accounting Events participate directly within accounting replay reconstruction.
+
+---
+
+## 5.2 Governance Event
+
+Governance Event groups governance-related Primitive Transitions.
+
+Governance Events may include:
+- authorization issuance;
+- delegation issuance;
+- escalation routing;
+- governance override;
+- governance review outcome.
+
+Governance Events participate directly within governance reconstruction semantics.
+
+---
+
+## 5.3 Disclosure Event
+
+Disclosure Event groups disclosure-related Primitive Transitions.
+
+Disclosure Events may include:
+- disclosure authorization;
+- disclosure issuance;
+- disclosure revocation;
+- disclosure supersession;
+- recipient authorization changes.
+
+Disclosure Events participate directly within disclosure reconstruction semantics.
+
+---
+
+## 5.4 Legal Event
+
+Legal Event groups legally relevant Primitive Transitions.
+
+Legal Events may include:
+- contractual recognition;
+- legal obligation recognition;
+- applicability mutation;
+- legal supersession;
+- legal corrective structures.
+
+Legal Events may require:
+- Ruleset interpretation;
+- governance interpretation;
+- temporal applicability interpretation.
+
+---
+
+## 5.5 Operational Event
+
+Operational Event groups operational Primitive Transitions.
+
+Operational Events may include:
+- inventory occurrence;
+- operational execution recognition;
+- operational state mutation;
+- workflow recognition;
+- operational obligation mutation.
+
+Operational Events represent authoritative organizational recognition of operational occurrence.
+
+---
+
+## 5.6 Corrective Event
+
+Corrective Event represents additive authoritative correction structure.
+
+Corrective Events may:
+- supersede applicability;
+- revise interpretation basis;
+- introduce corrective Primitive Transitions;
+- preserve historical continuity.
+
+Corrective Events must not destructively erase authoritative historical basis.
+
+---
+
+## 5.7 Scenario Event
+
+Scenario Event represents hypothetical Event structure existing only within isolated Scenario replay context.
+
+Scenario Events:
+- isolated;
+- tagged;
+- non-authoritative;
+- replay-bounded.
+
+Scenario Events must not mutate authoritative organizational basis.
+
+---
+
+# 6. Event Participation Boundaries
+
+## 6.1 Replay Participation
+
+Events participate directly within:
+- replay;
+- deterministic reconstruction;
+- governance reconstruction;
+- disclosure reconstruction;
+- Scenario derivation where authorized.
+
+Events represent authoritative replay substrate.
+
+---
+
+## 6.2 Interpretation Participation
+
+Events participate indirectly within Interpretations through:
+- Ruleset applicability;
+- temporal applicability;
+- governance applicability;
+- replay derivation.
+
+Interpretations remain derived non-authoritative structures.
+
+---
+
+## 6.3 Governance Participation
+
+Events may participate within:
+- governance authorization;
+- escalation routing;
+- delegation applicability;
+- disclosure eligibility;
+- replay authorization.
+
+Governance semantics remain reconstructable and attributable.
+
+---
+
+## 6.4 Disclosure Participation
+
+Events may participate within:
+- disclosure authorization;
+- disclosure reconstruction;
+- disclosure attribution;
+- recipient applicability;
+- disclosure perimeter determination.
+
+Disclosure structures remain detached from authoritative replay substrate.
+
+---
+
+## 6.5 Scenario Participation
+
+Events may participate within Scenario replay where:
+- Scenario applicability exists;
+- governance authorization permits;
+- replay isolation preserved.
+
+Scenario replay may read authoritative Events but must never mutate authoritative organizational basis.
+
+---
+
+# 7. Event Ordering and Temporal Semantics
+
+## 7.1 Temporal Applicability
+
+All Events and Primitive Transitions remain temporally scoped.
+
+Temporal applicability governs:
+- replay participation;
+- Ruleset applicability;
+- governance validity;
+- disclosure eligibility;
+- Scenario participation.
+
+Temporal applicability remains logically independent from identity persistence.
+
+---
+
+## 7.2 Replay Ordering
+
+Replay ordering must remain:
+- deterministic;
+- reconstructable;
+- attributable;
+- temporally consistent.
+
+Replay ordering may derive from:
+- commit chronology;
+- temporal semantics;
+- immutable ordering metadata;
+- replay sequencing structures.
+
+Timestamp semantics alone may be insufficient under concurrent or retroactive insertion conditions.
+
+---
+
+## 7.3 Supersession
+
+Supersession occurs through:
 - corrective Events;
-- superseding Events;
-- governing Rulesets;
-- Workflows;
-- approvals;
-- Commitments;
-- organizational Constraints.
+- revised applicability;
+- additive authoritative mutation;
+- superseding structures.
 
-Referential relationships between Events must remain reconstructable.
+Supersession must preserve historical reconstructability.
 
-Correction, supersession or reinterpretation must not destroy prior Event identity or reconstructable history.
+---
+
+# 8. Event Isolation Principles
+
+## 8.1 Replay Isolation
+
+Replay contexts must remain isolated from:
+- operational execution environments;
+- external mutation surfaces;
+- uncontrolled side effects.
+
+Replay reconstructs organizational state rather than executing operational activity.
+
+---
+
+## 8.2 Scenario Isolation
+
+Scenario Events remain isolated from authoritative replay substrate.
+
+Scenario structures:
+- non-authoritative;
+- disposable;
+- reconstructable;
+- analytically bounded.
+
+Scenario replay must not contaminate authoritative reconstruction.
+
+---
+
+## 8.3 Disclosure Isolation
+
+Disclosure-related Event participation must not expose unrestricted authoritative replay substrate.
+
+Disclosure structures remain:
+- bounded;
+- detached;
+- governance-authorized;
+- reconstructable.
+
+---
+
+# 9. AI Boundaries
+
+## 9.1 AI Participation
+
+AI systems may:
+- classify Events;
+- assist interpretation;
+- identify anomalies;
+- generate Proposals;
+- assist legal ambiguity analysis.
+
+AI systems remain bounded analytical augmentation mechanisms.
+
+---
+
+## 9.2 AI Non-Authority
+
+AI systems may not:
+- create authoritative Events independently;
+- mutate authoritative basis;
+- authorize governance actions;
+- authorize disclosure;
+- bypass replay boundaries.
+
+AI cognition never constitutes governance Authority.
+
+---
+
+# 10. Foundational Architectural Direction
+
+Canonical Event architecture within MARS preferentially supports:
+- deterministic declarative reconstruction;
+- append-only authoritative basis;
+- replay reproducibility;
+- governance traceability;
+- temporal applicability;
+- relational derivation;
+- additive correction.
+
+The architecture intentionally minimizes:
+- mutable authoritative state;
+- destructive correction;
+- opaque procedural mutation;
+- uncontrolled operational execution;
+- autonomous AI authority.
+
+Deterministic declarative reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.

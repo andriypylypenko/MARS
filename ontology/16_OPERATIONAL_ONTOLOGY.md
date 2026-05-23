@@ -1,342 +1,424 @@
 # 16_OPERATIONAL_ONTOLOGY
 
-Status: Draft v2  
-Confidence: Medium-High  
-Authority: Foundational Operational Ontology  
-Depends On:
-- none
+Status: Canonical Draft  
+Confidence: High  
+Authority: Foundational Ontology Doctrine
 
 ---
 
 # 1. Purpose
 
-This document defines foundational ontological assumptions of MARS.
+This document defines foundational operational ontology of MARS.
 
-It establishes:
-- what organizational reality consists of;
-- what constitutes authoritative organizational change;
-- how organizational condition is represented;
-- how reconstruction is possible;
-- how Interpretations emerge from authoritative basis.
+The ontology defined here establishes:
+- authoritative organizational basis semantics;
+- operational reconstruction semantics;
+- canonical organizational mutation semantics;
+- deterministic replay assumptions;
+- governance visibility assumptions;
+- interpretive derivation boundaries.
 
-This document establishes semantic foundations only.
-
-This document does not define:
-- database schema;
-- implementation architecture;
-- storage engines;
-- execution runtime;
-- UI structure.
+This ontology governs all subsequent architectural, persistence, replay and governance structures.
 
 ---
 
-# 2. Canonical Terminology
+## Canonical Architectural Invariants
 
-## 2.1 Authoritative Basis
+Unless explicitly overridden by narrower domain semantics, the following invariants apply throughout MARS:
 
-Authoritative Basis represents minimum authoritative reconstructable organizational foundation required for deterministic reconstruction.
+- authoritative basis immutable;
+- organizational correction additive;
+- Interpretations derived and non-authoritative;
+- replay deterministic and reconstructable;
+- AI systems non-authoritative;
+- governance explicit and default-deny;
+- Scenarios isolated from authoritative basis;
+- disclosure detached from authoritative reconstruction substrate;
+- authoritative basis sufficient for deterministic reconstruction.
 
-Authoritative Basis may include:
+---
+
+# 2. Foundational Ontological Principles
+
+## 2.1 Organizational Basis
+
+MARS represents organization through reconstructable authoritative organizational basis.
+
+Authoritative basis consists of:
 - authoritative Events;
 - Primitive Transitions;
-- governance records;
-- authoritative operational records;
 - temporal semantics;
-- authorization records.
+- governance-recognized commitments;
+- applicable Rulesets.
 
-Authoritative Basis does not include:
-- cached representations;
-- snapshots;
-- reports;
-- temporary projections;
-- Interpretations;
-- analytical artifacts.
+Authoritative basis represents immutable reconstructable organizational substrate.
 
 ---
 
-## 2.2 Event
+## 2.2 Reconstruction Principle
 
-Event represents meaningful organizational occurrence recognized by MARS as producing authoritative reconstructable organizational change.
+Organizational state within MARS is reconstructed rather than stored as mutable persistent truth snapshot.
 
-Events may consist of one or more Primitive Transitions.
+Operational state emerges through:
+- replay;
+- temporal applicability;
+- Ruleset interpretation;
+- governance applicability;
+- deterministic derivation.
 
----
-
-## 2.3 Primitive Transition
-
-Primitive Transition represents smallest authoritative indivisible mutation unit within organizational reality.
-
-Primitive Transitions constitute lowest authoritative reconstructable operational layer.
-
----
-
-## 2.4 Interpretation
-
-Interpretation represents Ruleset-derived organizational view reconstructed from authoritative basis.
-
-Interpretations may differ under different Rulesets while authoritative basis remains unchanged.
-
----
-
-## 2.5 Reconstruction
-
-Reconstruction represents deterministic derivation of organizational representations from:
-- authoritative basis;
-- Rulesets;
-- governance context;
-- temporal coordinates.
-
----
-
-## 2.6 Replay
-
-Replay represents sequential deterministic re-execution of authoritative basis through reconstruction pipeline.
-
-Replay is reconstruction mechanism rather than independent organizational object.
-
----
-
-## 2.7 Reinterpretation
-
-Reinterpretation represents derivation of new Interpretations from unchanged authoritative basis through application of different Rulesets.
-
----
-
-## 2.8 Ruleset
-
-Ruleset represents deterministic interpretive logic used to derive Interpretations from authoritative basis.
-
-Rulesets are reconstruction dependencies rather than components of authoritative basis.
-
----
-
-## 2.9 Capability
-
-Capability represents explicitly permitted bounded operational ability within MARS.
-
-Capability does not itself constitute Authority.
-
----
-
-## 2.10 Authority
-
-Authority represents governance-recognized permission to perform organizational action.
-
-Authority and Capability are distinct concepts.
-
----
-
-# 3. Core Ontological Assumptions
-
-## 3.1 Organizational Reality Exists as Historical Change
-
-MARS assumes organizational reality exists primarily as historical change rather than static state.
-
-Organizational condition emerges from accumulation of authoritative Events and Primitive Transitions across time.
-
----
-
-## 3.2 Organizational State is Reconstructed
-
-Operational state is not primary ontological object.
-
-Operational state represents reconstructed Interpretation derived from authoritative basis.
-
-Operational state therefore does not exist independently from:
-- Events;
-- Primitive Transitions;
+Reconstruction may produce multiple Interpretations depending upon:
 - Rulesets;
 - temporal coordinates;
-- governance context.
+- governance context;
+- Scenario assumptions.
 
 ---
 
-## 3.3 Historical Continuity
+## 2.3 Deterministic Reconstruction Doctrine
 
-Organizational reality is historically continuous.
+MARS preferentially represents organizational interpretation through deterministic declarative reconstruction operating upon authoritative basis.
 
-Authoritative organizational history must remain reconstructable across time.
+Deterministic reconstruction may utilize:
+- relational derivation;
+- SQL Views;
+- deterministic aggregations;
+- temporal filtering;
+- Ruleset applicability.
 
-Historical continuity must survive:
-- reinterpretation;
-- corrective Events;
-- Ruleset evolution;
-- governance change;
-- delayed assertions.
-
----
-
-## 3.4 Immutability of Authoritative History
-
-Authoritative committed organizational history is immutable.
-
-Correction occurs through:
-- additive Events;
-- compensating Primitive Transitions;
-- reinterpretation;
-- governance-authorized extension.
-
-Destructive mutation of authoritative history is prohibited.
+Procedural or AI-assisted reasoning remains bounded analytical augmentation rather than primary authoritative reconstruction substrate.
 
 ---
 
-## 3.5 Separation Between Basis and Interpretation
+## 2.4 Primitive Transition
 
-MARS distinguishes between:
-- authoritative basis;
-- Interpretations derived from basis.
+Primitive Transition represents lowest authoritative organizational mutation unit.
 
-Interpretations may vary while authoritative basis remains unchanged.
+Primitive Transition:
+- immutable after authoritative commit;
+- temporally scoped;
+- reconstructable;
+- governance-visible;
+- replay-participating.
 
-Interpretive variation does not alter authoritative organizational history.
-
----
-
-## 3.6 Bitemporal Organizational Reality
-
-MARS recognizes distinction between:
-- Valid Time;
-- Assertion Time.
-
-Organizational reality therefore includes:
-- time organizational occurrence was operationally true;
-- time organizational occurrence became recognized within MARS.
+Primitive Transition exists only within authoritative Event structure.
 
 ---
 
-## 3.7 Deterministic Reconstruction
+## 2.5 Event
 
-Identical:
+Event represents logical organizational occurrence grouping one or more Primitive Transitions.
+
+Event:
+- reconstructable;
+- attributable;
+- temporally scoped;
+- governance-visible;
+- replay-participating.
+
+Event represents authoritative organizational composition container rather than procedural execution object.
+
+---
+
+## 2.6 Interpretation
+
+Interpretation represents derived organizational representation generated through:
 - authoritative basis;
 - Rulesets;
-- governance context;
-- temporal coordinates
+- temporal applicability;
+- governance applicability;
+- Scenario context.
 
-must produce identical reconstructed results.
+Interpretations are:
+- derived;
+- non-authoritative;
+- reconstructable;
+- regenerable;
+- disposable.
 
-Deterministic reconstruction constitutes foundational MARS invariant.
-
----
-
-## 3.8 Governance-Bounded Organizational Reality
-
-Organizational reality inside MARS exists under governance Constraints.
-
-Not all operationally possible actions are authorized.
-
-Governance semantics remain reconstructable components of organizational reality.
+Interpretations must not become authoritative replay substrate.
 
 ---
 
-## 3.9 Explicit Ambiguity Preservation
+## 2.7 Ruleset
 
-MARS may preserve unresolved ambiguity explicitly.
+Ruleset represents deterministic interpretive logic governing reconstruction semantics.
 
-MARS must not fabricate certainty where authoritative basis remains insufficient.
+Rulesets may govern:
+- accounting interpretation;
+- legal interpretation;
+- governance applicability;
+- disclosure eligibility;
+- Scenario derivation;
+- reconstruction semantics.
 
-Ambiguity may remain valid reconstructable organizational condition.
-
----
-
-# 4. Foundational Architectural Separations
-
-## 4.1 Cognition vs Authority
-
-AI cognition does not constitute governance Authority.
-
-Derivation capability does not imply authorization capability.
-
----
-
-## 4.2 Interpretation vs Disclosure
-
-Ability to reconstruct Interpretation does not imply authorization to disclose Interpretation.
-
-Disclosure exists under separate governance Constraints.
+Rulesets:
+- temporally scoped;
+- reconstructable;
+- attributable;
+- replay-participating.
 
 ---
 
-## 4.3 Reconstruction vs Execution
+## 2.8 Governance
 
-Reconstruction of organizational condition does not imply authorization to execute economically significant action.
+Governance represents reconstructable organizational authority semantics.
 
----
+Governance determines:
+- authoritative commit eligibility;
+- disclosure authorization;
+- escalation responsibility;
+- delegation applicability;
+- replay authorization;
+- operational permission boundaries.
 
-## 4.4 Capability vs Authority
+Governance remains:
+- explicit;
+- attributable;
+- reconstructable;
+- temporally scoped.
 
-Operational Capability may exist independently from legitimate Authority.
-
-MARS architecture should minimize unauthorized Capability.
-
----
-
-## 4.5 Basis vs Representation
-
-Authoritative organizational basis remains distinct from:
-- reports;
-- snapshots;
-- analytical outputs;
-- disclosure artifacts;
-- Interpretations.
-
-Representations are derived artifacts rather than authoritative organizational reality.
+Absence of explicit authorization constitutes prohibition.
 
 ---
 
-# 5. Ontological Principles
+## 2.9 Scenario
 
-## 5.1 Append-Only Historical Principle
+Scenario represents isolated hypothetical reconstruction branch.
 
-Authoritative organizational history evolves through additive extension.
+Scenario may:
+- inherit authoritative basis;
+- apply alternate Rulesets;
+- apply hypothetical assumptions;
+- derive hypothetical Interpretations.
 
-Historical reconstruction must remain possible without destructive mutation.
+Scenario must remain:
+- isolated;
+- tagged;
+- non-authoritative;
+- replay-bounded.
+
+Scenario replay may read authoritative basis but must never mutate authoritative basis.
 
 ---
 
-## 5.2 Reconstruction Sufficiency Principle
+## 2.10 Proposal
+
+Proposal represents governance-reviewable candidate organizational mutation.
+
+Proposal may:
+- reference authoritative basis;
+- derive from AI analysis;
+- suggest corrective structures;
+- suggest disclosure actions;
+- suggest governance actions.
+
+Proposal remains:
+- non-authoritative;
+- attributable;
+- reconstructable;
+- governance-bounded.
+
+Proposal acceptance does not itself mutate authoritative basis.
+
+---
+
+## 2.11 Disclosure Artifact
+
+Disclosure Artifact represents detached externally deliverable organizational representation.
+
+Disclosure Artifacts:
+- derived;
+- governance-authorized;
+- detached;
+- bounded;
+- non-authoritative.
+
+Disclosure Artifacts must not become authoritative replay dependencies.
+
+---
+
+## 2.12 Replay
+
+Replay represents deterministic reconstruction execution procedure.
+
+Replay:
+- reconstructs organizational state;
+- applies temporal semantics;
+- applies Rulesets;
+- applies governance semantics;
+- derives Interpretations.
+
+Replay must remain:
+- deterministic;
+- reconstructable;
+- governance-bounded;
+- side-effect isolated.
+
+Replay contexts must never independently activate external operational side effects.
+
+---
+
+## 2.13 Temporal Applicability
+
+All persistence objects within MARS remain temporally scoped.
+
+Temporal applicability determines:
+- operational participation;
+- reconstruction applicability;
+- governance validity;
+- disclosure eligibility;
+- Ruleset applicability.
+
+Temporal applicability remains logically independent from identity persistence.
+
+---
+
+## 2.14 Identity Persistence
+
+Identity semantics preserve reconstructable distinguishability across:
+- replay;
+- reinterpretation;
+- governance evolution;
+- supersession;
+- correction.
+
+Temporal expiration does not independently destroy historical identity.
+
+Correction occurs preferentially through:
+- additive extension;
+- corrective Events;
+- revised applicability;
+- superseding structures.
+
+---
+
+## 2.15 Append-Only Doctrine
+
+Authoritative organizational basis remains append-only.
+
+All authoritative organizational correction occurs through additive extension rather than destructive historical mutation.
+
+Authoritative historical continuity must remain reconstructable.
+
+---
+
+## 2.16 AI Boundary Doctrine
+
+AI systems may:
+- derive;
+- classify;
+- summarize;
+- recommend;
+- interpret ambiguities;
+- generate Proposals.
+
+AI systems may not:
+- mutate authoritative basis;
+- authorize disclosure;
+- independently execute authoritative commits;
+- bypass governance Constraints;
+- independently activate external operational effects.
+
+AI cognition never constitutes governance Authority.
+
+---
+
+## 2.17 Authoritative Basis Sufficiency
 
 Authoritative basis alone must remain sufficient for deterministic reconstruction.
 
-Derived artifacts must not become irreplaceable components of organizational reality.
+Derived structures including:
+- Interpretations;
+- balances;
+- replay cache;
+- disclosure artifacts;
+- Scenario outputs;
+- AI analytical commentary
+
+must not become mandatory authoritative replay dependencies.
 
 ---
 
-## 5.3 Interpretive Plurality Principle
+# 3. Ontological Separation Principles
 
-Multiple valid Interpretations may coexist simultaneously under different Rulesets.
+## 3.1 Authoritative vs Derived
 
-Interpretive plurality does not constitute contradiction.
+MARS distinguishes explicitly between:
+- authoritative organizational basis;
+- derived organizational representations.
 
----
+Authoritative structures participate directly in replay and reconstruction.
 
-## 5.4 Governance Minimality Principle
-
-MARS should minimize:
-- authority surface area;
-- disclosure surface area;
-- autonomous operational capability;
-- irreversible operational capability.
+Derived structures remain regenerable outputs.
 
 ---
 
-## 5.5 Failure Containment Principle
+## 3.2 Operational vs Analytical
 
-Under insufficient reconstruction conditions MARS should prefer:
-- bounded operational failure;
-- ambiguity preservation;
-- escalation;
-- refusal of reconstruction
+Operational authoritative basis remains distinct from:
+- analytical commentary;
+- AI reasoning;
+- Scenario projections;
+- visualization layers;
+- disclosure renderings.
 
-over fabricated certainty.
+Analytical layers remain bounded augmentations rather than authoritative organizational substrate.
 
 ---
 
-# 6. Non-Goals
+## 3.3 Governance vs Capability
 
-MARS is not intended to:
-- autonomously execute economically significant operations;
-- autonomously authorize disclosure;
-- replace governance authority;
-- fabricate certainty from incomplete basis;
-- destructively rewrite organizational history;
-- collapse governance boundaries between cognition, execution and disclosure.
+Governance Authority remains distinct from:
+- technical capability;
+- runtime access;
+- AI cognition;
+- operational proximity.
+
+Operational capability alone does not constitute governance authorization.
+
+---
+
+## 3.4 Replay vs Execution
+
+Replay reconstructs organizational state.
+
+Replay does not independently:
+- operationalize actions;
+- trigger workflows;
+- execute payments;
+- activate messaging;
+- perform external mutation.
+
+Replay remains reconstruction procedure rather than operational execution mechanism.
+
+---
+
+## 3.5 Scenario vs Authoritative Basis
+
+Scenario structures:
+- hypothetical;
+- isolated;
+- replay-bounded;
+- disposable.
+
+Scenario structures must not supersede authoritative organizational basis.
+
+---
+
+# 4. Foundational Architectural Direction
+
+MARS preferentially derives organizational Interpretations through:
+- deterministic declarative reconstruction;
+- relational derivation;
+- temporal applicability semantics;
+- explicit Rulesets;
+- governance applicability semantics.
+
+AI-assisted procedural reasoning remains secondary bounded augmentation utilized primarily where deterministic declarative reconstruction becomes impractical due to:
+- ambiguity;
+- incomplete formalizability;
+- contradictory evidence;
+- legal interpretive uncertainty;
+- OCR extraction complexity.
+
+Deterministic reconstruction remains preferred wherever organizational interpretation may be represented through explicit relational semantics.
