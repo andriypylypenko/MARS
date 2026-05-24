@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict vWBxhBEDCrRibasJBRxF5yFcm5TUYhs9LYx5oDl5ybnRNLZ4MsEQeasA0GPZTYd
+\restrict 38Z7YPgocTJw6fnP8RdqTw4fjNHzl4s9eQjtNhEisYk8UaJC3hygOXzH41Oc97S
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -54,6 +54,66 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 --
 
 COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
+
+
+--
+-- Name: fn_is_entity_position(bigint); Type: FUNCTION; Schema: global; Owner: postgres
+--
+
+CREATE FUNCTION global.fn_is_entity_position(p_position_id bigint) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+BEGIN
+    IF p_position_id IS NULL THEN
+        RETURN TRUE;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1
+        FROM global.gd_027_positions
+        WHERE position_id    = p_position_id
+          AND position_class = 'entity_position'
+    );
+END;
+$$;
+
+
+ALTER FUNCTION global.fn_is_entity_position(p_position_id bigint) OWNER TO postgres;
+
+--
+-- Name: FUNCTION fn_is_entity_position(p_position_id bigint); Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON FUNCTION global.fn_is_entity_position(p_position_id bigint) IS 'Returns true if the given position_id exists in gd_027_positions with position_class = ''entity_position''. Used in CHECK constraint on gd_026_teammembers.entity_position_id. STABLE — result depends on current registry contents.';
+
+
+--
+-- Name: fn_is_project_position(bigint); Type: FUNCTION; Schema: global; Owner: postgres
+--
+
+CREATE FUNCTION global.fn_is_project_position(p_position_id bigint) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+BEGIN
+    IF p_position_id IS NULL THEN
+        RETURN TRUE;
+    END IF;
+    RETURN EXISTS (
+        SELECT 1
+        FROM global.gd_027_positions
+        WHERE position_id    = p_position_id
+          AND position_class = 'project_position'
+    );
+END;
+$$;
+
+
+ALTER FUNCTION global.fn_is_project_position(p_position_id bigint) OWNER TO postgres;
+
+--
+-- Name: FUNCTION fn_is_project_position(p_position_id bigint); Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON FUNCTION global.fn_is_project_position(p_position_id bigint) IS 'Returns true if the given position_id exists in gd_027_positions with position_class = ''project_position''. Used in CHECK constraint on gd_026_teammembers.project_position_id. STABLE — result depends on current registry contents.';
 
 
 --
@@ -731,20 +791,6 @@ ALTER SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq OW
 
 
 --
--- Name: gd_010_exrate_codes; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_010_exrate_codes (
-    exrate_code text CONSTRAINT gd_014_rate_codes_rate_code_not_null NOT NULL,
-    exrate_name text CONSTRAINT gd_014_rate_codes_rate_name_not_null NOT NULL,
-    provider text,
-    description text
-);
-
-
-ALTER TABLE global.gd_010_exrate_codes OWNER TO postgres;
-
---
 -- Name: gd_011_holidays; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1103,12 +1149,20 @@ CREATE TABLE global.gd_014_inflation_rates (
     inflation_rate numeric(10,6) CONSTRAINT gd_014_inflation_rates_inflation_rate_nn NOT NULL,
     created_by character varying(128),
     created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_014_inflation_rates_created_at_nn NOT NULL,
+    rate_reference character varying(128),
     CONSTRAINT gd_014_inflation_rates_rate_range_chk CHECK (((inflation_rate >= ('-100'::integer)::numeric) AND (inflation_rate <= (1000000)::numeric))),
     CONSTRAINT gd_014_inflation_rates_year_chk CHECK (((applicable_year >= 1900) AND (applicable_year <= 3000)))
 );
 
 
 ALTER TABLE global.gd_014_inflation_rates OWNER TO postgres;
+
+--
+-- Name: COLUMN gd_014_inflation_rates.rate_reference; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_014_inflation_rates.rate_reference IS 'Canonical identifier of the data source used to establish this rate. References gd_018_rate_codes. Nullable pending governance consensus on acceptable source registry for historical rows.';
+
 
 --
 -- Name: gd_014_inflation_rates_inflation_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
@@ -1831,6 +1885,297 @@ COMMENT ON COLUMN global.gd_023_event_types.description IS 'Scope of Events belo
 
 
 --
+-- Name: gd_024_legal_arrangement_types; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global.gd_024_legal_arrangement_types (
+    arrangement_type_code text CONSTRAINT gd_024_lat_code_nn NOT NULL,
+    arrangement_type_name text CONSTRAINT gd_024_lat_name_nn NOT NULL,
+    arrangement_category text CONSTRAINT gd_024_lat_category_nn NOT NULL,
+    jurisdiction_code character(2),
+    description text,
+    CONSTRAINT gd_024_lat_category_chk CHECK ((arrangement_category = ANY (ARRAY['employment'::text, 'fop'::text, 'civil_contract'::text, 'secondment'::text, 'management_contract'::text, 'advisory'::text, 'internship'::text])))
+);
+
+
+ALTER TABLE global.gd_024_legal_arrangement_types OWNER TO postgres;
+
+--
+-- Name: TABLE gd_024_legal_arrangement_types; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global.gd_024_legal_arrangement_types IS 'Registry of legal arrangement types governing human engagement. arrangement_category determines financial reconstruction semantics (payroll obligations, tax treatment, social contributions).';
+
+
+--
+-- Name: COLUMN gd_024_legal_arrangement_types.arrangement_type_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_024_legal_arrangement_types.arrangement_type_code IS 'Stable short identifier referenced by gd_026_teammembers.';
+
+
+--
+-- Name: COLUMN gd_024_legal_arrangement_types.arrangement_category; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_024_legal_arrangement_types.arrangement_category IS 'Broad category governing financial and governance reconstruction semantics.';
+
+
+--
+-- Name: COLUMN gd_024_legal_arrangement_types.jurisdiction_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_024_legal_arrangement_types.jurisdiction_code IS 'ISO 3166-1 alpha-2 country code of the governing legal jurisdiction. Null for jurisdiction-agnostic types (secondment, advisory).';
+
+
+--
+-- Name: gd_025_projects; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global.gd_025_projects (
+    project_id bigint CONSTRAINT gd_025_projects_project_id_nn NOT NULL,
+    project_code text CONSTRAINT gd_025_projects_project_code_nn NOT NULL,
+    project_name text CONSTRAINT gd_025_projects_project_name_nn NOT NULL,
+    entity_id bigint,
+    project_owner_id bigint,
+    description text,
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_025_projects_valid_from_nn NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_025_projects_valid_to_nn NOT NULL,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_025_projects_created_at_nn NOT NULL,
+    CONSTRAINT gd_025_projects_temporal_chk CHECK ((valid_from < valid_to))
+);
+
+
+ALTER TABLE global.gd_025_projects OWNER TO postgres;
+
+--
+-- Name: TABLE gd_025_projects; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global.gd_025_projects IS 'Project registry. Each row represents a named organizational project. Referenced by gd_026_teammembers for project allocation tracking.';
+
+
+--
+-- Name: COLUMN gd_025_projects.project_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_025_projects.project_code IS 'Short stable human-readable code (e.g. ''Astra'', ''Delta'').';
+
+
+--
+-- Name: COLUMN gd_025_projects.entity_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_025_projects.entity_id IS 'Entity that owns or runs this project. Nullable for cross-entity projects.';
+
+
+--
+-- Name: COLUMN gd_025_projects.project_owner_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_025_projects.project_owner_id IS 'Person responsible for this project. FK to gd_013_people — ownership is a person-level attribute, not tied to a specific arrangement.';
+
+
+--
+-- Name: gd_025_projects_project_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global.gd_025_projects ALTER COLUMN project_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_025_projects_project_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: gd_026_teammembers; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global.gd_026_teammembers (
+    arrangement_id bigint CONSTRAINT gd_026_tm_arrangement_id_nn NOT NULL,
+    person_id bigint CONSTRAINT gd_026_tm_person_id_nn NOT NULL,
+    entity_id bigint CONSTRAINT gd_026_tm_entity_id_nn NOT NULL,
+    arrangement_type_code text CONSTRAINT gd_026_tm_type_nn NOT NULL,
+    arrangement_valid_from timestamp with time zone CONSTRAINT gd_026_tm_arr_from_nn NOT NULL,
+    arrangement_valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_026_tm_arr_to_nn NOT NULL,
+    project_id bigint,
+    time_allocation numeric(5,4) DEFAULT 1.0 CONSTRAINT gd_026_tm_time_alloc_nn NOT NULL,
+    project_valid_from timestamp with time zone,
+    project_valid_to timestamp with time zone,
+    pay_currency character(3),
+    pay_unit text,
+    pay_amount numeric(20,6),
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_026_tm_created_at_nn NOT NULL,
+    entity_position_id bigint,
+    project_position_id bigint,
+    CONSTRAINT gd_026_tm_arrangement_temporal_chk CHECK ((arrangement_valid_from < arrangement_valid_to)),
+    CONSTRAINT gd_026_tm_entity_position_class_chk CHECK (global.fn_is_entity_position(entity_position_id)),
+    CONSTRAINT gd_026_tm_pay_amount_chk CHECK (((pay_amount IS NULL) OR (pay_amount >= (0)::numeric))),
+    CONSTRAINT gd_026_tm_pay_unit_chk CHECK ((pay_unit = ANY (ARRAY['hour'::text, 'day'::text, 'month'::text, 'year'::text, 'delivery'::text]))),
+    CONSTRAINT gd_026_tm_payment_consistency_chk CHECK ((((pay_currency IS NULL) AND (pay_unit IS NULL) AND (pay_amount IS NULL)) OR ((pay_currency IS NOT NULL) AND (pay_unit IS NOT NULL) AND (pay_amount IS NOT NULL)))),
+    CONSTRAINT gd_026_tm_project_consistency_chk CHECK ((((project_id IS NULL) AND (project_valid_from IS NULL) AND (project_valid_to IS NULL)) OR ((project_id IS NOT NULL) AND (project_valid_from IS NOT NULL) AND (project_valid_to IS NOT NULL)))),
+    CONSTRAINT gd_026_tm_project_position_class_chk CHECK (global.fn_is_project_position(project_position_id)),
+    CONSTRAINT gd_026_tm_project_within_arrangement_chk CHECK (((project_valid_from IS NULL) OR ((project_valid_from >= arrangement_valid_from) AND (project_valid_to <= arrangement_valid_to) AND (project_valid_from < project_valid_to)))),
+    CONSTRAINT gd_026_tm_time_allocation_chk CHECK (((time_allocation > (0)::numeric) AND (time_allocation <= 1.0)))
+);
+
+
+ALTER TABLE global.gd_026_teammembers OWNER TO postgres;
+
+--
+-- Name: TABLE gd_026_teammembers; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global.gd_026_teammembers IS 'Team member engagement registry. Each row represents one distinct combination of person × entity × legal arrangement type × project × payment terms with its own validity period. Two date ranges: arrangement_valid_from/to (legal contract envelope) and project_valid_from/to (project allocation within that envelope). A person split across two projects has two rows — one per allocation.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.arrangement_valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.arrangement_valid_from IS 'Start of the legal arrangement (contract effective date).';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.arrangement_valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.arrangement_valid_to IS 'End of the legal arrangement. Defaults to effectively unbounded.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.time_allocation; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.time_allocation IS 'Fraction of working time allocated to this project under this arrangement. 1.0000 = full time. 0.5000 = half time. Must be > 0 and <= 1.0.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.project_valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.project_valid_from IS 'Start of project allocation. Must be >= arrangement_valid_from. Null when arrangement exists without project assignment.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.project_valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.project_valid_to IS 'End of project allocation. Must be <= arrangement_valid_to.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.pay_unit; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.pay_unit IS 'Unit against which pay_amount is expressed: hour, day, month, year, or delivery (per result/deliverable).';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.pay_amount; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.pay_amount IS 'Gross amount per pay_unit in pay_currency.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.entity_position_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.entity_position_id IS 'Formal position of this person within the legal entity. Must reference a position with class = ''entity_position''. Used in tax reporting, statutory filings, and signing authority. Nullable — not all arrangements require a formal entity position.';
+
+
+--
+-- Name: COLUMN gd_026_teammembers.project_position_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_026_teammembers.project_position_id IS 'Operational position of this person within the project. Must reference a position with class = ''project_position''. Governs decision authority and role within project delivery scope. Nullable — a person may hold an entity arrangement without project assignment.';
+
+
+--
+-- Name: gd_026_teammembers_arrangement_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global.gd_026_teammembers ALTER COLUMN arrangement_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_026_teammembers_arrangement_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: gd_027_positions; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global.gd_027_positions (
+    position_id bigint CONSTRAINT gd_027_positions_id_nn NOT NULL,
+    position_class text CONSTRAINT gd_027_positions_class_nn NOT NULL,
+    position_name text CONSTRAINT gd_027_positions_name_nn NOT NULL,
+    position_superior_id bigint,
+    position_description text,
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_027_positions_valid_from_nn NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_027_positions_valid_to_nn NOT NULL,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_027_positions_created_at_nn NOT NULL,
+    CONSTRAINT gd_027_positions_class_chk CHECK ((position_class = ANY (ARRAY['entity_position'::text, 'project_position'::text]))),
+    CONSTRAINT gd_027_positions_no_self_superior_chk CHECK (((position_superior_id IS NULL) OR (position_superior_id <> position_id))),
+    CONSTRAINT gd_027_positions_temporal_chk CHECK ((valid_from < valid_to))
+);
+
+
+ALTER TABLE global.gd_027_positions OWNER TO postgres;
+
+--
+-- Name: TABLE gd_027_positions; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global.gd_027_positions IS 'Canonical position registry supporting two independent hierarchies: entity_position (formal statutory org structure) and project_position (project delivery structure). Hierarchy enforced within class only — cross-class superior references are prevented by the composite FK on (position_superior_id, position_class). Recursive CTE traversal produces full org/project tree from this table.';
+
+
+--
+-- Name: COLUMN gd_027_positions.position_class; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_027_positions.position_class IS 'entity_position: formal role within legal entity — appears on statutory filings. project_position: operational role within a project delivery context.';
+
+
+--
+-- Name: COLUMN gd_027_positions.position_superior_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_027_positions.position_superior_id IS 'Immediate superior position within the same class. NULL denotes a root node (top of hierarchy). Composite FK enforces same-class constraint — cross-class reference fails at insert.';
+
+
+--
+-- Name: COLUMN gd_027_positions.position_description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global.gd_027_positions.position_description IS 'Scope, responsibilities, and authority boundaries of this position.';
+
+
+--
+-- Name: gd_027_positions_position_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global.gd_027_positions ALTER COLUMN position_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_027_positions_position_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: gd_001_events event_id; Type: DEFAULT; Schema: global; Owner: postgres
 --
 
@@ -2140,6 +2485,62 @@ ALTER TABLE ONLY global.gd_023_event_types
 
 
 --
+-- Name: gd_024_legal_arrangement_types gd_024_legal_arrangement_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_024_legal_arrangement_types
+    ADD CONSTRAINT gd_024_legal_arrangement_types_pkey PRIMARY KEY (arrangement_type_code);
+
+
+--
+-- Name: gd_025_projects gd_025_projects_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_025_projects
+    ADD CONSTRAINT gd_025_projects_code_uq UNIQUE (project_code);
+
+
+--
+-- Name: gd_025_projects gd_025_projects_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_025_projects
+    ADD CONSTRAINT gd_025_projects_pkey PRIMARY KEY (project_id);
+
+
+--
+-- Name: gd_026_teammembers gd_026_teammembers_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_teammembers_pkey PRIMARY KEY (arrangement_id);
+
+
+--
+-- Name: gd_027_positions gd_027_positions_id_class_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_027_positions
+    ADD CONSTRAINT gd_027_positions_id_class_uq UNIQUE (position_id, position_class);
+
+
+--
+-- Name: gd_027_positions gd_027_positions_name_class_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_027_positions
+    ADD CONSTRAINT gd_027_positions_name_class_uq UNIQUE (position_name, position_class);
+
+
+--
+-- Name: gd_027_positions gd_027_positions_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_027_positions
+    ADD CONSTRAINT gd_027_positions_pkey PRIMARY KEY (position_id);
+
+
+--
 -- Name: gd_001_events_assertion_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
@@ -2228,6 +2629,13 @@ CREATE INDEX gd_002_primitive_transitions_account_idx ON global.gd_002_primitive
 --
 
 CREATE INDEX gd_002_primitive_transitions_description_trgm_idx ON global.gd_002_primitive_transitions USING gin (transition_description public.gin_trgm_ops) WHERE (transition_description IS NOT NULL);
+
+
+--
+-- Name: gd_002_primitive_transitions_entity_account_time_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_002_primitive_transitions_entity_account_time_idx ON global.gd_002_primitive_transitions USING btree (entity_id, account_code, valid_time);
 
 
 --
@@ -2469,6 +2877,13 @@ CREATE INDEX gd_013_governance_identities_valid_to_idx ON global.gd_008_governan
 
 
 --
+-- Name: gd_015_exchange_rates_pair_time_code_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_015_exchange_rates_pair_time_code_idx ON global.gd_015_exchange_rates USING btree (base_currency, quote_currency, rate_timestamp, rate_code);
+
+
+--
 -- Name: gd_016_coa_account_name_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
@@ -2578,6 +2993,111 @@ CREATE INDEX gd_022_delegations_entity_idx ON global.gd_022_delegations USING bt
 --
 
 CREATE INDEX gd_022_delegations_temporal_idx ON global.gd_022_delegations USING btree (valid_from, valid_to);
+
+
+--
+-- Name: gd_024_lat_category_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_024_lat_category_idx ON global.gd_024_legal_arrangement_types USING btree (arrangement_category);
+
+
+--
+-- Name: gd_024_lat_jurisdiction_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_024_lat_jurisdiction_idx ON global.gd_024_legal_arrangement_types USING btree (jurisdiction_code) WHERE (jurisdiction_code IS NOT NULL);
+
+
+--
+-- Name: gd_025_projects_entity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_025_projects_entity_idx ON global.gd_025_projects USING btree (entity_id) WHERE (entity_id IS NOT NULL);
+
+
+--
+-- Name: gd_025_projects_owner_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_025_projects_owner_idx ON global.gd_025_projects USING btree (project_owner_id) WHERE (project_owner_id IS NOT NULL);
+
+
+--
+-- Name: gd_025_projects_validity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_025_projects_validity_idx ON global.gd_025_projects USING btree (valid_from, valid_to);
+
+
+--
+-- Name: gd_026_tm_currency_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_currency_idx ON global.gd_026_teammembers USING btree (pay_currency) WHERE (pay_currency IS NOT NULL);
+
+
+--
+-- Name: gd_026_tm_entity_arr_validity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_entity_arr_validity_idx ON global.gd_026_teammembers USING btree (entity_id, arrangement_valid_from, arrangement_valid_to);
+
+
+--
+-- Name: gd_026_tm_entity_position_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_entity_position_idx ON global.gd_026_teammembers USING btree (entity_position_id) WHERE (entity_position_id IS NOT NULL);
+
+
+--
+-- Name: gd_026_tm_person_arr_validity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_person_arr_validity_idx ON global.gd_026_teammembers USING btree (person_id, arrangement_valid_from, arrangement_valid_to);
+
+
+--
+-- Name: gd_026_tm_project_position_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_project_position_idx ON global.gd_026_teammembers USING btree (project_position_id) WHERE (project_position_id IS NOT NULL);
+
+
+--
+-- Name: gd_026_tm_project_validity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_project_validity_idx ON global.gd_026_teammembers USING btree (project_id, project_valid_from, project_valid_to) WHERE (project_id IS NOT NULL);
+
+
+--
+-- Name: gd_026_tm_type_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_type_idx ON global.gd_026_teammembers USING btree (arrangement_type_code);
+
+
+--
+-- Name: gd_027_positions_class_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_027_positions_class_idx ON global.gd_027_positions USING btree (position_class);
+
+
+--
+-- Name: gd_027_positions_superior_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_027_positions_superior_idx ON global.gd_027_positions USING btree (position_superior_id) WHERE (position_superior_id IS NOT NULL);
+
+
+--
+-- Name: gd_027_positions_validity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_027_positions_validity_idx ON global.gd_027_positions USING btree (valid_from, valid_to);
 
 
 --
@@ -2709,6 +3229,14 @@ ALTER TABLE ONLY global.gd_014_inflation_rates
 
 
 --
+-- Name: gd_014_inflation_rates gd_014_inflation_rates_rate_reference_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_014_inflation_rates
+    ADD CONSTRAINT gd_014_inflation_rates_rate_reference_fk FOREIGN KEY (rate_reference) REFERENCES global.gd_018_rate_codes(rate_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
 -- Name: gd_015_exchange_rates gd_015_exchange_rates_base_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -2722,6 +3250,14 @@ ALTER TABLE ONLY global.gd_015_exchange_rates
 
 ALTER TABLE ONLY global.gd_015_exchange_rates
     ADD CONSTRAINT gd_015_exchange_rates_quote_currency_fk FOREIGN KEY (quote_currency) REFERENCES global.gd_012_currency_registry(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_015_exchange_rates gd_015_exchange_rates_rate_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_015_exchange_rates
+    ADD CONSTRAINT gd_015_exchange_rates_rate_code_fk FOREIGN KEY (rate_code) REFERENCES global.gd_018_rate_codes(rate_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
@@ -2789,8 +3325,88 @@ ALTER TABLE ONLY global.gd_022_delegations
 
 
 --
+-- Name: gd_025_projects gd_025_projects_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_025_projects
+    ADD CONSTRAINT gd_025_projects_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_025_projects gd_025_projects_owner_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_025_projects
+    ADD CONSTRAINT gd_025_projects_owner_fk FOREIGN KEY (project_owner_id) REFERENCES global.gd_013_people(person_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_arrangement_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_arrangement_type_fk FOREIGN KEY (arrangement_type_code) REFERENCES global.gd_024_legal_arrangement_types(arrangement_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_currency_fk FOREIGN KEY (pay_currency) REFERENCES global.gd_012_currency_registry(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_entity_position_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_entity_position_fk FOREIGN KEY (entity_position_id) REFERENCES global.gd_027_positions(position_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_person_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_person_fk FOREIGN KEY (person_id) REFERENCES global.gd_013_people(person_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_project_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_project_fk FOREIGN KEY (project_id) REFERENCES global.gd_025_projects(project_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_026_teammembers gd_026_tm_project_position_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_026_teammembers
+    ADD CONSTRAINT gd_026_tm_project_position_fk FOREIGN KEY (project_position_id) REFERENCES global.gd_027_positions(position_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: gd_027_positions gd_027_positions_superior_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global.gd_027_positions
+    ADD CONSTRAINT gd_027_positions_superior_fk FOREIGN KEY (position_superior_id, position_class) REFERENCES global.gd_027_positions(position_id, position_class) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
 -- PostgreSQL database dump complete
 --
 
-\unrestrict vWBxhBEDCrRibasJBRxF5yFcm5TUYhs9LYx5oDl5ybnRNLZ4MsEQeasA0GPZTYd
+\unrestrict 38Z7YPgocTJw6fnP8RdqTw4fjNHzl4s9eQjtNhEisYk8UaJC3hygOXzH41Oc97S
 
