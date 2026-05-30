@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict daO9t4x022D6ughrjumOorSZPgY8S4UD13NNiLh1Q14ZhVF1iYQkbL6BeqUFrnt
+\restrict D8e7LyC9Xzuccgt9tLK2dBqK7O9aAJC3KCyVTP3DmC3T4pJxlCOSy9ezKc7ydej
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -64,14 +64,11 @@ CREATE FUNCTION global.fn_is_entity_position(p_position_id bigint) RETURNS boole
     LANGUAGE plpgsql STABLE
     AS $$
 BEGIN
-    IF p_position_id IS NULL THEN
-        RETURN TRUE;
-    END IF;
+    IF p_position_id IS NULL THEN RETURN TRUE; END IF;
     RETURN EXISTS (
-        SELECT 1
-        FROM global.gd_027_positions
+        SELECT 1 FROM global."502_hr_positions"
         WHERE position_id    = p_position_id
-          AND position_class = 'entity_position'
+          AND position_class = 'statutory'
     );
 END;
 $$;
@@ -94,14 +91,11 @@ CREATE FUNCTION global.fn_is_project_position(p_position_id bigint) RETURNS bool
     LANGUAGE plpgsql STABLE
     AS $$
 BEGIN
-    IF p_position_id IS NULL THEN
-        RETURN TRUE;
-    END IF;
+    IF p_position_id IS NULL THEN RETURN TRUE; END IF;
     RETURN EXISTS (
-        SELECT 1
-        FROM global.gd_027_positions
+        SELECT 1 FROM global."502_hr_positions"
         WHERE position_id    = p_position_id
-          AND position_class = 'project_position'
+          AND position_class = 'operational'
     );
 END;
 $$;
@@ -125,8 +119,7 @@ CREATE FUNCTION global.fn_is_valid_commit_status(p_status_code character varying
     AS $$
 BEGIN
     RETURN EXISTS (
-        SELECT 1
-        FROM global.gd_007_status_registry
+        SELECT 1 FROM global."407_ref_statuses"
         WHERE status_type = 'commit_status'
           AND status_code = p_status_code
     );
@@ -152,8 +145,7 @@ CREATE FUNCTION global.fn_is_valid_event_status(p_status_code character varying)
     AS $$
 BEGIN
     RETURN EXISTS (
-        SELECT 1
-        FROM global.gd_007_status_registry
+        SELECT 1 FROM global."407_ref_statuses"
         WHERE status_type = 'event_status'
           AND status_code = p_status_code
     );
@@ -170,329 +162,77 @@ ALTER FUNCTION global.fn_is_valid_event_status(p_status_code character varying) 
 COMMENT ON FUNCTION global.fn_is_valid_event_status(p_status_code character varying) IS 'Returns true if p_status_code exists in gd_007_status_registry for status_type = ''event_status''. Used in CHECK constraint on gd_001_events.event_status. Declared STABLE — result depends on current registry contents, not solely on the argument.';
 
 
+--
+-- Name: fn_is_valid_position_superior(bigint, text, bigint, bigint); Type: FUNCTION; Schema: global; Owner: postgres
+--
+
+CREATE FUNCTION global.fn_is_valid_position_superior(p_superior_id bigint, p_class text, p_project_id bigint, p_entity_id bigint) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+BEGIN
+    IF p_superior_id IS NULL THEN RETURN TRUE; END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM global."502_hr_positions"
+        WHERE position_id    = p_superior_id
+          AND position_class = p_class
+          AND (
+              (p_project_id IS NOT NULL AND project_id = p_project_id)
+              OR
+              (p_entity_id IS NOT NULL AND entity_id = p_entity_id AND project_id IS NULL)
+              OR
+              (p_project_id IS NULL AND p_entity_id IS NULL
+                   AND project_id IS NULL AND entity_id IS NULL)
+          )
+    );
+END;
+$$;
+
+
+ALTER FUNCTION global.fn_is_valid_position_superior(p_superior_id bigint, p_class text, p_project_id bigint, p_entity_id bigint) OWNER TO postgres;
+
+--
+-- Name: FUNCTION fn_is_valid_position_superior(p_superior_id bigint, p_class text, p_project_id bigint, p_entity_id bigint); Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON FUNCTION global.fn_is_valid_position_superior(p_superior_id bigint, p_class text, p_project_id bigint, p_entity_id bigint) IS 'Validates that position_superior_id references a position with the same class and same scope context (same project, same entity, or both universal). Prevents cross-project and cross-entity hierarchy contamination. STABLE.';
+
+
+--
+-- Name: fn_is_valid_scenario_status(character varying); Type: FUNCTION; Schema: global; Owner: postgres
+--
+
+CREATE FUNCTION global.fn_is_valid_scenario_status(p_status_code character varying) RETURNS boolean
+    LANGUAGE plpgsql STABLE
+    AS $$
+BEGIN
+    IF p_status_code IS NULL THEN RETURN TRUE; END IF;
+    RETURN EXISTS (
+        SELECT 1 FROM global."407_ref_statuses"
+        WHERE status_type = 'scenario_status'
+          AND status_code  = p_status_code
+    );
+END;
+$$;
+
+
+ALTER FUNCTION global.fn_is_valid_scenario_status(p_status_code character varying) OWNER TO postgres;
+
+--
+-- Name: FUNCTION fn_is_valid_scenario_status(p_status_code character varying); Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON FUNCTION global.fn_is_valid_scenario_status(p_status_code character varying) IS 'Returns true if p_status_code exists in gd_007_status_registry for status_type = ''scenario_status''. STABLE.';
+
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 --
--- Name: gd_001_events; Type: TABLE; Schema: global; Owner: postgres
+-- Name: 001_core_entities; Type: TABLE; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_001_events (
-    event_id bigint NOT NULL,
-    event_type character varying(64) NOT NULL,
-    source_type character varying(32) NOT NULL,
-    source_ref character varying(256),
-    valid_time timestamp with time zone NOT NULL,
-    assertion_time timestamp with time zone NOT NULL,
-    entity_id bigint NOT NULL,
-    governance_scope_id bigint,
-    commit_id bigint NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    event_description text,
-    event_status character varying(32) NOT NULL,
-    corrective_of_event_id bigint,
-    replay_sequence bigint NOT NULL,
-    CONSTRAINT gd_001_events_assertion_time_chk CHECK ((assertion_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone)),
-    CONSTRAINT gd_001_events_corrective_consistency_chk CHECK (((corrective_of_event_id IS NULL) OR ((corrective_of_event_id IS NOT NULL) AND ((event_type)::text = 'corrective'::text)))),
-    CONSTRAINT gd_001_events_event_status_type_chk CHECK (global.fn_is_valid_event_status(event_status)),
-    CONSTRAINT gd_001_events_valid_time_chk CHECK ((valid_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
-);
-
-
-ALTER TABLE global.gd_001_events OWNER TO postgres;
-
---
--- Name: COLUMN gd_001_events.corrective_of_event_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_001_events.corrective_of_event_id IS 'References the Event this Event additively corrects. NULL on original Events. Populated only on corrective Events. Original Events are never modified — correction linkage is carried exclusively by the corrective Event. May form a chain: each corrective Event points to its immediate predecessor in the correction history.';
-
-
---
--- Name: COLUMN gd_001_events.replay_sequence; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_001_events.replay_sequence IS 'Globally monotonic database-assigned sequence providing deterministic replay sub-ordering within and across commits. Assigned exclusively by the database — never by the application layer. Canonical replay ordering: ORDER BY commit_id, replay_sequence. Immutable after assignment.';
-
-
---
--- Name: gd_001_events_event_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_001_events_event_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_001_events_event_id_seq OWNER TO postgres;
-
---
--- Name: gd_001_events_event_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_001_events_event_id_seq OWNED BY global.gd_001_events.event_id;
-
-
---
--- Name: gd_001_events_replay_sequence_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-ALTER TABLE global.gd_001_events ALTER COLUMN replay_sequence ADD GENERATED ALWAYS AS IDENTITY (
-    SEQUENCE NAME global.gd_001_events_replay_sequence_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
---
--- Name: gd_002_primitive_transitions; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_002_primitive_transitions (
-    primitive_transition_id bigint NOT NULL,
-    event_id bigint NOT NULL,
-    entity_id bigint NOT NULL,
-    account_code character varying(128) NOT NULL,
-    transformation_direction character varying(32) NOT NULL,
-    amount numeric(20,6) NOT NULL,
-    currency_code character(3),
-    valid_time timestamp with time zone NOT NULL,
-    assertion_time timestamp with time zone NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    transition_description text,
-    primitive_transition_type text CONSTRAINT gd_002_primitive_transitions_type_nn NOT NULL,
-    CONSTRAINT gd_002_primitive_transitions_amount_chk CHECK ((amount >= (0)::numeric)),
-    CONSTRAINT gd_002_primitive_transitions_assertion_time_chk CHECK ((assertion_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone)),
-    CONSTRAINT gd_002_primitive_transitions_direction_chk CHECK (((transformation_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying])::text[]))),
-    CONSTRAINT gd_002_primitive_transitions_valid_time_chk CHECK ((valid_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
-);
-
-
-ALTER TABLE global.gd_002_primitive_transitions OWNER TO postgres;
-
---
--- Name: TABLE gd_002_primitive_transitions; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_002_primitive_transitions IS 'Canonical atomic state mutations participating in deterministic replay and organizational reconstruction.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.primitive_transition_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.primitive_transition_id IS 'Stable internal identity of primitive transition.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.event_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.event_id IS 'References originating Event producing primitive state mutation.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.entity_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.entity_id IS 'Organizational entity whose state is affected by primitive transition.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.account_code IS 'Accounting state topology element affected by primitive transition.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.transformation_direction; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.transformation_direction IS 'Canonical polarity of primitive organizational state mutation.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.amount; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.amount IS 'Quantitative magnitude of primitive state mutation.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.currency_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.currency_code IS 'Currency applicable to quantitative mutation where relevant.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.valid_time; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.valid_time IS 'Business-effective timestamp of primitive transition applicability.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.assertion_time; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.assertion_time IS 'Timestamp at which primitive transition became known to the system.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.created_by IS 'Infrastructure actor responsible for physical insertion of primitive transition.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.created_at IS 'Physical insertion timestamp of primitive transition.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.transition_description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.transition_description IS 'Human-readable explanation of primitive transition semantics.';
-
-
---
--- Name: COLUMN gd_002_primitive_transitions.primitive_transition_type; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_002_primitive_transitions.primitive_transition_type IS 'Canonical type of this Primitive Transition. Determines replay stream participation. References gd_019_pt_types.pt_type_code.';
-
-
---
--- Name: gd_002_primitive_transitions_primitive_transition_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_002_primitive_transitions_primitive_transition_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_002_primitive_transitions_primitive_transition_id_seq OWNER TO postgres;
-
---
--- Name: gd_002_primitive_transitions_primitive_transition_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_002_primitive_transitions_primitive_transition_id_seq OWNED BY global.gd_002_primitive_transitions.primitive_transition_id;
-
-
---
--- Name: gd_003_ruleset_registry; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_003_ruleset_registry (
-    ruleset_id character varying(128) CONSTRAINT gd_008_ruleset_registry_ruleset_id_not_null NOT NULL,
-    ruleset_name character varying(256) CONSTRAINT gd_008_ruleset_registry_ruleset_name_not_null NOT NULL,
-    ruleset_type character varying(64) CONSTRAINT gd_008_ruleset_registry_ruleset_type_not_null NOT NULL,
-    ruleset_description text,
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_from_not_null NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_to_not_null NOT NULL,
-    governance_scope_id bigint,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_008_ruleset_registry_created_at_not_null NOT NULL,
-    CONSTRAINT gd_008_ruleset_registry_valid_range_chk CHECK ((valid_to >= valid_from))
-);
-
-
-ALTER TABLE global.gd_003_ruleset_registry OWNER TO postgres;
-
---
--- Name: TABLE gd_003_ruleset_registry; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_003_ruleset_registry IS 'Canonical registry of governance-approved Rulesets participating in deterministic reconstruction and replay.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.ruleset_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.ruleset_id IS 'Stable canonical Ruleset identity.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.ruleset_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.ruleset_name IS 'Human-readable Ruleset name.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.ruleset_type; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.ruleset_type IS 'Canonical Ruleset classification.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.ruleset_description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.ruleset_description IS 'Human-readable Ruleset explanation and applicability notes.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.valid_from IS 'Beginning of Ruleset applicability interval.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.valid_to; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.valid_to IS 'End of Ruleset applicability interval.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.governance_scope_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.governance_scope_id IS 'Governance applicability scope participating in Ruleset authorization and replay semantics.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.created_by IS 'Infrastructure actor responsible for physical Ruleset registration.';
-
-
---
--- Name: COLUMN gd_003_ruleset_registry.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_003_ruleset_registry.created_at IS 'Physical insertion timestamp of Ruleset registry record.';
-
-
---
--- Name: gd_004_entities; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_004_entities (
+CREATE TABLE global."001_core_entities" (
     entity_id bigint CONSTRAINT gd_003_entities_entity_id_not_null NOT NULL,
     entity_reg_number character varying(128) CONSTRAINT gd_003_entities_entity_reg_number_not_null NOT NULL,
     country_code character(2) CONSTRAINT gd_003_entities_country_code_not_null NOT NULL,
@@ -510,249 +250,242 @@ CREATE TABLE global.gd_004_entities (
 );
 
 
-ALTER TABLE global.gd_004_entities OWNER TO postgres;
+ALTER TABLE global."001_core_entities" OWNER TO postgres;
 
 --
--- Name: TABLE gd_004_entities; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: TABLE "001_core_entities"; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON TABLE global.gd_004_entities IS 'Canonical registry of organizational entities participating in deterministic replay, governance reconstruction and operational interpretation.';
-
-
---
--- Name: COLUMN gd_004_entities.entity_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_004_entities.entity_id IS 'Stable internal identity of organizational entity.';
+COMMENT ON TABLE global."001_core_entities" IS 'Canonical registry of organizational entities participating in deterministic replay, governance reconstruction and operational interpretation.';
 
 
 --
--- Name: COLUMN gd_004_entities.entity_reg_number; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".entity_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_004_entities.entity_reg_number IS 'Canonical registration identifier assigned to organizational entity.';
-
-
---
--- Name: COLUMN gd_004_entities.country_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_004_entities.country_code IS 'Jurisdictional country code associated with organizational entity registration.';
+COMMENT ON COLUMN global."001_core_entities".entity_id IS 'Stable internal identity of organizational entity.';
 
 
 --
--- Name: COLUMN gd_004_entities.legal_name; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".entity_reg_number; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_004_entities.legal_name IS 'Official legal designation of organizational entity.';
-
-
---
--- Name: COLUMN gd_004_entities.normalized_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_004_entities.normalized_name IS 'Normalized searchable representation of organizational entity name used for deterministic matching and deduplication.';
+COMMENT ON COLUMN global."001_core_entities".entity_reg_number IS 'Canonical registration identifier assigned to organizational entity.';
 
 
 --
--- Name: COLUMN gd_004_entities.tax_id; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".country_code; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_004_entities.tax_id IS 'Jurisdictional taxpayer identification reference of organizational entity.';
-
-
---
--- Name: COLUMN gd_004_entities.vat_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_004_entities.vat_id IS 'Jurisdictional VAT registration reference of organizational entity.';
+COMMENT ON COLUMN global."001_core_entities".country_code IS 'Jurisdictional country code associated with organizational entity registration.';
 
 
 --
--- Name: COLUMN gd_004_entities.legal_address; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".legal_name; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_004_entities.legal_address IS 'Registered legal address of organizational entity.';
-
-
---
--- Name: COLUMN gd_004_entities.valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_004_entities.valid_from IS 'Beginning of organizational entity applicability interval.';
+COMMENT ON COLUMN global."001_core_entities".legal_name IS 'Official legal designation of organizational entity.';
 
 
 --
--- Name: COLUMN gd_004_entities.valid_to; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".normalized_name; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_004_entities.valid_to IS 'End of organizational entity applicability interval.';
-
-
---
--- Name: COLUMN gd_004_entities.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_004_entities.created_by IS 'Infrastructure actor responsible for physical insertion of entity record.';
+COMMENT ON COLUMN global."001_core_entities".normalized_name IS 'Normalized searchable representation of organizational entity name used for deterministic matching and deduplication.';
 
 
 --
--- Name: COLUMN gd_004_entities.created_at; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".tax_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_004_entities.created_at IS 'Physical insertion timestamp of entity record.';
-
-
---
--- Name: gd_004_entities_entity_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_004_entities_entity_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_004_entities_entity_id_seq OWNER TO postgres;
-
---
--- Name: gd_004_entities_entity_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_004_entities_entity_id_seq OWNED BY global.gd_004_entities.entity_id;
+COMMENT ON COLUMN global."001_core_entities".tax_id IS 'Jurisdictional taxpayer identification reference of organizational entity.';
 
 
 --
--- Name: gd_005_ruleset_lines; Type: TABLE; Schema: global; Owner: postgres
+-- Name: COLUMN "001_core_entities".vat_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_005_ruleset_lines (
-    line_id bigint CONSTRAINT gd_009_ruleset_lines_line_id_not_null NOT NULL,
-    ruleset_id character varying(128) CONSTRAINT gd_009_ruleset_lines_ruleset_id_not_null NOT NULL,
-    entity_1_id bigint,
-    entity_2_id bigint,
-    trf_direction character varying(32) CONSTRAINT gd_009_ruleset_lines_trf_direction_not_null NOT NULL,
-    amount numeric(20,6),
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_from_not_null NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_to_not_null NOT NULL,
+COMMENT ON COLUMN global."001_core_entities".vat_id IS 'Jurisdictional VAT registration reference of organizational entity.';
+
+
+--
+-- Name: COLUMN "001_core_entities".legal_address; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."001_core_entities".legal_address IS 'Registered legal address of organizational entity.';
+
+
+--
+-- Name: COLUMN "001_core_entities".valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."001_core_entities".valid_from IS 'Beginning of organizational entity applicability interval.';
+
+
+--
+-- Name: COLUMN "001_core_entities".valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."001_core_entities".valid_to IS 'End of organizational entity applicability interval.';
+
+
+--
+-- Name: COLUMN "001_core_entities".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."001_core_entities".created_by IS 'Infrastructure actor responsible for physical insertion of entity record.';
+
+
+--
+-- Name: COLUMN "001_core_entities".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."001_core_entities".created_at IS 'Physical insertion timestamp of entity record.';
+
+
+--
+-- Name: 002_core_people; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."002_core_people" (
+    person_id bigint CONSTRAINT gd_007_people_person_id_not_null NOT NULL,
+    person_code character varying(128),
+    first_name character varying(128) CONSTRAINT gd_007_people_first_name_not_null NOT NULL,
+    middle_name character varying(128),
+    last_name character varying(128) CONSTRAINT gd_007_people_last_name_not_null NOT NULL,
+    tax_id character varying(128),
+    date_of_birth date,
+    country_code character(2),
     created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_009_ruleset_lines_created_at_not_null NOT NULL,
-    line_description text,
-    account_code character varying(128),
-    CONSTRAINT gd_009_ruleset_lines_transformation_direction_chk CHECK (((trf_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying, 'recognize'::character varying, 'derecognize'::character varying, 'transfer_in'::character varying, 'transfer_out'::character varying, 'debit'::character varying, 'credit'::character varying])::text[]))),
-    CONSTRAINT gd_009_ruleset_lines_valid_range_chk CHECK ((valid_to >= valid_from))
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_007_people_created_at_not_null NOT NULL
 );
 
 
-ALTER TABLE global.gd_005_ruleset_lines OWNER TO postgres;
+ALTER TABLE global."002_core_people" OWNER TO postgres;
 
 --
--- Name: COLUMN gd_005_ruleset_lines.entity_1_id; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: TABLE "002_core_people"; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_005_ruleset_lines.entity_1_id IS 'Primary organizational entity this Ruleset line applies to. Nullable — not all Ruleset lines are entity-scoped. References gd_004_entities.entity_id.';
-
-
---
--- Name: COLUMN gd_005_ruleset_lines.entity_2_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_005_ruleset_lines.entity_2_id IS 'Secondary organizational entity this Ruleset line applies to. Used for inter-entity rules such as intercompany transfers. Nullable. References gd_004_entities.entity_id.';
+COMMENT ON TABLE global."002_core_people" IS 'Canonical registry of real-world persons participating in organizational reconstruction and governance relations.';
 
 
 --
--- Name: COLUMN gd_005_ruleset_lines.account_code; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "002_core_people".person_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_005_ruleset_lines.account_code IS 'Chart of Accounts identifier this Ruleset line applies to. Nullable — not all Ruleset lines are account-scoped. References gd_016_coa.account_code.';
-
-
---
--- Name: gd_005_ruleset_lines_line_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_005_ruleset_lines_line_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_005_ruleset_lines_line_id_seq OWNER TO postgres;
-
---
--- Name: gd_005_ruleset_lines_line_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_005_ruleset_lines_line_id_seq OWNED BY global.gd_005_ruleset_lines.line_id;
+COMMENT ON COLUMN global."002_core_people".person_id IS 'Stable internal identity of person record.';
 
 
 --
--- Name: gd_006_commit_records; Type: TABLE; Schema: global; Owner: postgres
+-- Name: COLUMN "002_core_people".person_code; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_006_commit_records (
-    commit_id bigint CONSTRAINT gd_005_commit_records_commit_id_not_null NOT NULL,
-    commit_timestamp timestamp with time zone CONSTRAINT gd_005_commit_records_commit_timestamp_not_null NOT NULL,
-    committing_authority_id bigint CONSTRAINT gd_005_commit_records_committing_authority_id_not_null NOT NULL,
-    commit_type character varying(64) CONSTRAINT gd_005_commit_records_commit_type_not_null NOT NULL,
-    commit_reason text,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_005_commit_records_created_at_not_null NOT NULL,
-    commit_status character varying(32) CONSTRAINT gd_005_commit_records_commit_status_not_null NOT NULL,
-    CONSTRAINT gd_006_commit_records_commit_status_chk CHECK (global.fn_is_valid_commit_status(commit_status)),
-    CONSTRAINT gd_006_commit_records_commit_timestamp_chk CHECK ((commit_timestamp >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
+COMMENT ON COLUMN global."002_core_people".person_code IS 'Canonical external or organizational identifier of person.';
+
+
+--
+-- Name: COLUMN "002_core_people".first_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".first_name IS 'Registered first name of person.';
+
+
+--
+-- Name: COLUMN "002_core_people".middle_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".middle_name IS 'Registered middle name of person.';
+
+
+--
+-- Name: COLUMN "002_core_people".last_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".last_name IS 'Registered last name of person.';
+
+
+--
+-- Name: COLUMN "002_core_people".tax_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".tax_id IS 'Jurisdictional taxpayer or national identification reference of person.';
+
+
+--
+-- Name: COLUMN "002_core_people".date_of_birth; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".date_of_birth IS 'Declared date of birth of person.';
+
+
+--
+-- Name: COLUMN "002_core_people".country_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".country_code IS 'Canonical country code associated with person record.';
+
+
+--
+-- Name: COLUMN "002_core_people".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".created_by IS 'Infrastructure actor responsible for physical insertion of person record.';
+
+
+--
+-- Name: COLUMN "002_core_people".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."002_core_people".created_at IS 'Physical insertion timestamp of person record.';
+
+
+--
+-- Name: 003_core_projects; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."003_core_projects" (
+    project_id bigint CONSTRAINT gd_025_projects_project_id_nn NOT NULL,
+    project_code text CONSTRAINT gd_025_projects_project_code_nn NOT NULL,
+    project_name text CONSTRAINT gd_025_projects_project_name_nn NOT NULL,
+    project_owner_arrangement_id bigint,
+    description text,
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_025_projects_valid_from_nn NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_025_projects_valid_to_nn NOT NULL,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_025_projects_created_at_nn NOT NULL,
+    CONSTRAINT gd_025_projects_temporal_chk CHECK ((valid_from < valid_to))
 );
 
 
-ALTER TABLE global.gd_006_commit_records OWNER TO postgres;
+ALTER TABLE global."003_core_projects" OWNER TO postgres;
 
 --
--- Name: gd_006_commit_records_commit_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+-- Name: TABLE "003_core_projects"; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE SEQUENCE global.gd_006_commit_records_commit_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_006_commit_records_commit_id_seq OWNER TO postgres;
-
---
--- Name: gd_006_commit_records_commit_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_006_commit_records_commit_id_seq OWNED BY global.gd_006_commit_records.commit_id;
+COMMENT ON TABLE global."003_core_projects" IS 'Project registry. Each row represents a named organizational project. Referenced by gd_026_teammembers for project allocation tracking.';
 
 
 --
--- Name: gd_007_status_registry; Type: TABLE; Schema: global; Owner: postgres
+-- Name: COLUMN "003_core_projects".project_code; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_007_status_registry (
-    status_code character varying(32) CONSTRAINT gd_006_event_status_registry_event_status_code_not_null NOT NULL,
-    status_name character varying(128) CONSTRAINT gd_006_event_status_registry_event_status_name_not_null NOT NULL,
-    status_description text,
-    is_authoritative_replay_eligible boolean DEFAULT false CONSTRAINT gd_006_event_status_registr_is_authoritative_replay_el_not_null NOT NULL,
-    is_terminal boolean DEFAULT false CONSTRAINT gd_006_event_status_registry_is_terminal_not_null NOT NULL,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_006_event_status_registry_created_at_not_null NOT NULL,
-    status_type character varying(64) DEFAULT 'event_status'::character varying CONSTRAINT gd_006_status_registry_status_type_not_null NOT NULL
-);
+COMMENT ON COLUMN global."003_core_projects".project_code IS 'Short stable human-readable code (e.g. ''Astra'', ''Delta'').';
 
-
-ALTER TABLE global.gd_007_status_registry OWNER TO postgres;
 
 --
--- Name: gd_008_governance_identities; Type: TABLE; Schema: global; Owner: postgres
+-- Name: COLUMN "003_core_projects".project_owner_arrangement_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_008_governance_identities (
+COMMENT ON COLUMN global."003_core_projects".project_owner_arrangement_id IS 'The specific team member arrangement of the person responsible for this project. References gd_026_teammembers — ownership is attributed to a person in their organizational capacity, not merely as a natural person. Nullable: set to NULL when creating the project, updated once the owner arrangement record exists.';
+
+
+--
+-- Name: 101_gov_identities; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."101_gov_identities" (
     governance_identity_id bigint CONSTRAINT gd_013_governance_identities_governance_identity_id_not_null NOT NULL,
     identity_type character varying(64) CONSTRAINT gd_013_governance_identities_identity_type_not_null NOT NULL,
     identity_name character varying(256) CONSTRAINT gd_013_governance_identities_identity_name_not_null NOT NULL,
@@ -763,839 +496,34 @@ CREATE TABLE global.gd_008_governance_identities (
     created_by character varying(128),
     created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_013_governance_identities_created_at_not_null NOT NULL,
     identity_description text,
+    created_by_identity_id bigint,
+    person_id bigint,
+    CONSTRAINT gd_008_governance_identities_identity_type_chk CHECK (((identity_type)::text = ANY ((ARRAY['human_controller'::character varying, 'system'::character varying, 'auditor'::character varying, 'external'::character varying])::text[]))),
     CONSTRAINT gd_013_governance_identities_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
 
-ALTER TABLE global.gd_008_governance_identities OWNER TO postgres;
+ALTER TABLE global."101_gov_identities" OWNER TO postgres;
 
 --
--- Name: gd_008_governance_identities_governance_identity_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+-- Name: COLUMN "101_gov_identities".identity_type; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
+COMMENT ON COLUMN global."101_gov_identities".identity_type IS 'Category of governance identity. human_controller: primary governance authority with independent commit rights. system: automated service identity (AI, data pipelines, scheduled processes). auditor: read and disclosure access, no commit authority. external: outside party authorized to receive disclosures. Authority gradient within human_controller population is managed via gd_022_delegations — identity_type records category, not current scope.';
 
 
-ALTER SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq OWNER TO postgres;
-
---
--- Name: gd_008_governance_identities_governance_identity_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq OWNED BY global.gd_008_governance_identities.governance_identity_id;
-
-
---
--- Name: gd_011_holidays; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_011_holidays (
-    holiday_id bigint NOT NULL,
-    country_code character(2) NOT NULL,
-    holiday_name character varying(256) NOT NULL,
-    holiday_type character varying(64) NOT NULL,
-    holiday_date date NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE global.gd_011_holidays OWNER TO postgres;
-
---
--- Name: TABLE gd_011_holidays; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_011_holidays IS 'Canonical registry of jurisdictional and organizational holidays participating in deterministic replay, scheduling and governance timing semantics.';
-
-
---
--- Name: COLUMN gd_011_holidays.holiday_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.holiday_id IS 'Stable internal identity of holiday record.';
-
-
---
--- Name: COLUMN gd_011_holidays.country_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.country_code IS 'Jurisdictional country code associated with holiday applicability.';
-
-
---
--- Name: COLUMN gd_011_holidays.holiday_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.holiday_name IS 'Human-readable designation of holiday.';
-
-
---
--- Name: COLUMN gd_011_holidays.holiday_type; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.holiday_type IS 'Canonical classification of holiday applicability and governance semantics.';
-
-
---
--- Name: COLUMN gd_011_holidays.holiday_date; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.holiday_date IS 'Calendar date on which holiday becomes applicable.';
-
-
---
--- Name: COLUMN gd_011_holidays.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.created_by IS 'Infrastructure actor responsible for physical insertion of holiday record.';
-
-
---
--- Name: COLUMN gd_011_holidays.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_011_holidays.created_at IS 'Physical insertion timestamp of holiday record.';
-
-
---
--- Name: gd_011_holidays_holiday_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_011_holidays_holiday_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_011_holidays_holiday_id_seq OWNER TO postgres;
-
---
--- Name: gd_011_holidays_holiday_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_011_holidays_holiday_id_seq OWNED BY global.gd_011_holidays.holiday_id;
-
-
---
--- Name: gd_012_currency_registry; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_012_currency_registry (
-    currency_id bigint NOT NULL,
-    currency_name character varying(128) NOT NULL,
-    iso_alpha_2 character(2),
-    iso_alpha_3 character(3) NOT NULL,
-    currency_symbol character varying(16),
-    issuing_jurisdiction character varying(128),
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT gd_012_currency_registry_valid_range_chk CHECK ((valid_to >= valid_from))
-);
-
-
-ALTER TABLE global.gd_012_currency_registry OWNER TO postgres;
-
---
--- Name: TABLE gd_012_currency_registry; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_012_currency_registry IS 'Canonical registry of currencies participating in deterministic replay, valuation and financial reconstruction.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.currency_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.currency_id IS 'Stable internal identity of currency record.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.currency_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.currency_name IS 'Human-readable canonical currency name.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.iso_alpha_2; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.iso_alpha_2 IS 'Two-letter canonical currency abbreviation where applicable.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.iso_alpha_3; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.iso_alpha_3 IS 'Three-letter ISO currency code used in replay and reporting semantics.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.currency_symbol; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.currency_symbol IS 'Human-readable symbol representing currency in disclosure and reporting contexts.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.issuing_jurisdiction; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.issuing_jurisdiction IS 'Jurisdiction or authority associated with currency issuance.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.valid_from IS 'Beginning of currency applicability interval.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.valid_to; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.valid_to IS 'End of currency applicability interval.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.created_by IS 'Infrastructure actor responsible for physical insertion of currency record.';
-
-
---
--- Name: COLUMN gd_012_currency_registry.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_012_currency_registry.created_at IS 'Physical insertion timestamp of currency record.';
-
-
---
--- Name: gd_012_currency_registry_currency_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_012_currency_registry_currency_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_012_currency_registry_currency_id_seq OWNER TO postgres;
-
---
--- Name: gd_012_currency_registry_currency_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_012_currency_registry_currency_id_seq OWNED BY global.gd_012_currency_registry.currency_id;
-
-
---
--- Name: gd_013_people; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_013_people (
-    person_id bigint CONSTRAINT gd_007_people_person_id_not_null NOT NULL,
-    person_code character varying(128),
-    first_name character varying(128) CONSTRAINT gd_007_people_first_name_not_null NOT NULL,
-    middle_name character varying(128),
-    last_name character varying(128) CONSTRAINT gd_007_people_last_name_not_null NOT NULL,
-    tax_id character varying(128),
-    date_of_birth date,
-    country_code character(2),
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_007_people_valid_from_not_null NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_007_people_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_007_people_created_at_not_null NOT NULL,
-    CONSTRAINT gd_007_people_valid_range_chk CHECK ((valid_to >= valid_from))
-);
-
-
-ALTER TABLE global.gd_013_people OWNER TO postgres;
-
---
--- Name: TABLE gd_013_people; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_013_people IS 'Canonical registry of real-world persons participating in organizational reconstruction and governance relations.';
-
-
---
--- Name: COLUMN gd_013_people.person_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.person_id IS 'Stable internal identity of person record.';
-
-
---
--- Name: COLUMN gd_013_people.person_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.person_code IS 'Canonical external or organizational identifier of person.';
-
-
---
--- Name: COLUMN gd_013_people.first_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.first_name IS 'Registered first name of person.';
-
-
---
--- Name: COLUMN gd_013_people.middle_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.middle_name IS 'Registered middle name of person.';
-
-
---
--- Name: COLUMN gd_013_people.last_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.last_name IS 'Registered last name of person.';
-
-
---
--- Name: COLUMN gd_013_people.tax_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.tax_id IS 'Jurisdictional taxpayer or national identification reference of person.';
-
-
---
--- Name: COLUMN gd_013_people.date_of_birth; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.date_of_birth IS 'Declared date of birth of person.';
-
-
---
--- Name: COLUMN gd_013_people.country_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.country_code IS 'Canonical country code associated with person record.';
-
-
---
--- Name: COLUMN gd_013_people.valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.valid_from IS 'Beginning of person record applicability interval.';
-
-
---
--- Name: COLUMN gd_013_people.valid_to; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.valid_to IS 'End of person record applicability interval.';
-
-
---
--- Name: COLUMN gd_013_people.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.created_by IS 'Infrastructure actor responsible for physical insertion of person record.';
-
-
---
--- Name: COLUMN gd_013_people.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_013_people.created_at IS 'Physical insertion timestamp of person record.';
-
-
---
--- Name: gd_013_people_person_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_013_people_person_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_013_people_person_id_seq OWNER TO postgres;
-
---
--- Name: gd_013_people_person_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_013_people_person_id_seq OWNED BY global.gd_013_people.person_id;
-
-
---
--- Name: gd_014_inflation_rates; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_014_inflation_rates (
-    inflation_rate_id bigint CONSTRAINT gd_014_inflation_rates_inflation_rate_id_nn NOT NULL,
-    applicable_year integer CONSTRAINT gd_014_inflation_rates_applicable_year_nn NOT NULL,
-    currency_code character(3) CONSTRAINT gd_014_inflation_rates_currency_code_nn NOT NULL,
-    inflation_rate numeric(10,6) CONSTRAINT gd_014_inflation_rates_inflation_rate_nn NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_014_inflation_rates_created_at_nn NOT NULL,
-    rate_reference character varying(128),
-    CONSTRAINT gd_014_inflation_rates_rate_range_chk CHECK (((inflation_rate >= ('-100'::integer)::numeric) AND (inflation_rate <= (1000000)::numeric))),
-    CONSTRAINT gd_014_inflation_rates_year_chk CHECK (((applicable_year >= 1900) AND (applicable_year <= 3000)))
-);
-
-
-ALTER TABLE global.gd_014_inflation_rates OWNER TO postgres;
-
---
--- Name: COLUMN gd_014_inflation_rates.rate_reference; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_014_inflation_rates.rate_reference IS 'Canonical identifier of the data source used to establish this rate. References gd_018_rate_codes. Nullable pending governance consensus on acceptable source registry for historical rows.';
-
-
---
--- Name: gd_014_inflation_rates_inflation_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-ALTER TABLE global.gd_014_inflation_rates ALTER COLUMN inflation_rate_id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME global.gd_014_inflation_rates_inflation_rate_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
-
-
---
--- Name: gd_015_exchange_rates; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_015_exchange_rates (
-    rate_id bigint CONSTRAINT gd_004_exchange_rates_rate_id_not_null NOT NULL,
-    rate_timestamp timestamp with time zone CONSTRAINT gd_004_exchange_rates_rate_timestamp_not_null NOT NULL,
-    base_currency character(3) CONSTRAINT gd_004_exchange_rates_base_currency_not_null NOT NULL,
-    quote_currency character(3) CONSTRAINT gd_004_exchange_rates_quote_currency_not_null NOT NULL,
-    exchange_rate numeric(18,6) CONSTRAINT gd_004_exchange_rates_exchange_rate_not_null NOT NULL,
-    rate_code character varying(64)
-);
-
-
-ALTER TABLE global.gd_015_exchange_rates OWNER TO postgres;
-
---
--- Name: TABLE gd_015_exchange_rates; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_015_exchange_rates IS 'Canonical exchange rate registry participating in deterministic replay and financial reconstruction.';
-
-
---
--- Name: COLUMN gd_015_exchange_rates.rate_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_015_exchange_rates.rate_id IS 'Stable internal identity of exchange rate record.';
-
-
---
--- Name: COLUMN gd_015_exchange_rates.rate_timestamp; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_015_exchange_rates.rate_timestamp IS 'Timestamp at which exchange rate becomes applicable for replay and interpretation.';
-
-
---
--- Name: COLUMN gd_015_exchange_rates.base_currency; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_015_exchange_rates.base_currency IS 'Source currency participating in exchange rate transformation.';
-
-
---
--- Name: COLUMN gd_015_exchange_rates.quote_currency; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_015_exchange_rates.quote_currency IS 'Target currency participating in exchange rate transformation.';
-
-
---
--- Name: COLUMN gd_015_exchange_rates.exchange_rate; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_015_exchange_rates.exchange_rate IS 'Deterministic conversion ratio between base and quote currency.';
-
-
---
--- Name: COLUMN gd_015_exchange_rates.rate_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_015_exchange_rates.rate_code IS 'Canonical exchange rate source or methodology identifier.';
-
-
---
--- Name: gd_015_exchange_rates_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_015_exchange_rates_rate_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_015_exchange_rates_rate_id_seq OWNER TO postgres;
-
---
--- Name: gd_015_exchange_rates_rate_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_015_exchange_rates_rate_id_seq OWNED BY global.gd_015_exchange_rates.rate_id;
-
-
---
--- Name: gd_016_coa; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_016_coa (
-    account_code character varying(128) NOT NULL,
-    ruleset_id character varying(128) NOT NULL,
-    parent_account_code character varying(128),
-    account_name character varying(256) NOT NULL,
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() NOT NULL,
-    CONSTRAINT gd_016_coa_valid_range_chk CHECK ((valid_to >= valid_from))
-);
-
-
-ALTER TABLE global.gd_016_coa OWNER TO postgres;
-
---
--- Name: TABLE gd_016_coa; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_016_coa IS 'Canonical accounting state topology participating in deterministic replay and accounting reconstruction.';
-
-
---
--- Name: COLUMN gd_016_coa.account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.account_code IS 'Stable canonical accounting topology identifier.';
-
-
---
--- Name: COLUMN gd_016_coa.ruleset_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.ruleset_id IS 'Ruleset governing accounting interpretation applicability of account.';
-
-
---
--- Name: COLUMN gd_016_coa.parent_account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.parent_account_code IS 'Parent accounting topology element used for hierarchical reconstruction and aggregation.';
-
-
---
--- Name: COLUMN gd_016_coa.account_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.account_name IS 'Human-readable accounting topology designation.';
-
-
---
--- Name: COLUMN gd_016_coa.valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.valid_from IS 'Beginning of accounting topology applicability interval.';
-
-
---
--- Name: COLUMN gd_016_coa.valid_to; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.valid_to IS 'End of accounting topology applicability interval.';
-
-
---
--- Name: COLUMN gd_016_coa.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.created_by IS 'Infrastructure actor responsible for physical insertion of accounting topology record.';
-
-
---
--- Name: COLUMN gd_016_coa.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_016_coa.created_at IS 'Physical insertion timestamp of accounting topology record.';
-
-
---
--- Name: gd_017_naming_conventions; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_017_naming_conventions (
-    naming_id bigint NOT NULL,
-    object_type character varying(128) NOT NULL,
-    object_ref text CONSTRAINT gd_017_naming_conventions_object_id_not_null NOT NULL,
-    canonical_name character varying(256) NOT NULL,
-    translation_language character(2) NOT NULL,
-    translated_name character varying(256) NOT NULL,
-    translation_context character varying(128),
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() NOT NULL
-);
-
-
-ALTER TABLE global.gd_017_naming_conventions OWNER TO postgres;
-
---
--- Name: TABLE gd_017_naming_conventions; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_017_naming_conventions IS 'Canonical multilingual naming registry used for disclosure, reporting, localization and governance-readable reconstruction.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.naming_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.naming_id IS 'Stable internal identity of naming convention record.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.object_type; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.object_type IS 'Canonical classification of organizational object receiving translated naming semantics.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.object_ref; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.object_ref IS 'Primary key value of the referenced object, stored as text. Holds stringified integer PKs (e.g. ''42'') for bigint-keyed tables and varchar PKs as-is (e.g. ''ACC-001-CASH'') for text-keyed tables such as gd_016_coa. Interpreted in conjunction with object_type. No FK enforcement — polymorphic references cannot be constrained at the database level.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.canonical_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.canonical_name IS 'Primary canonical organizational name of object.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.translation_language; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.translation_language IS 'Language code of translated naming representation.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.translated_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.translated_name IS 'Localized or translated organizational naming representation.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.translation_context; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.translation_context IS 'Optional disclosure, legal or reporting context governing translation applicability.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.created_by IS 'Infrastructure actor responsible for physical insertion of naming convention record.';
-
-
---
--- Name: COLUMN gd_017_naming_conventions.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_017_naming_conventions.created_at IS 'Physical insertion timestamp of naming convention record.';
-
-
---
--- Name: gd_017_naming_conventions_naming_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-CREATE SEQUENCE global.gd_017_naming_conventions_naming_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1;
-
-
-ALTER SEQUENCE global.gd_017_naming_conventions_naming_id_seq OWNER TO postgres;
-
---
--- Name: gd_017_naming_conventions_naming_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
---
-
-ALTER SEQUENCE global.gd_017_naming_conventions_naming_id_seq OWNED BY global.gd_017_naming_conventions.naming_id;
-
-
---
--- Name: gd_018_rate_codes; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_018_rate_codes (
-    rate_code text NOT NULL,
-    rate_name text NOT NULL,
-    rate_type text NOT NULL,
-    provider text,
-    description text
-);
-
-
-ALTER TABLE global.gd_018_rate_codes OWNER TO postgres;
-
---
--- Name: gd_019_pt_types; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_019_pt_types (
-    pt_type_code text CONSTRAINT gd_019_pt_types_pt_type_code_nn NOT NULL,
-    pt_type_name text CONSTRAINT gd_019_pt_types_pt_type_name_nn NOT NULL,
-    description text
-);
-
-
-ALTER TABLE global.gd_019_pt_types OWNER TO postgres;
-
---
--- Name: TABLE gd_019_pt_types; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_019_pt_types IS 'Canonical registry of Primitive Transition types as defined in Doc 19. Determines which reconstruction stream a Primitive Transition participates in.';
-
-
---
--- Name: COLUMN gd_019_pt_types.pt_type_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_019_pt_types.pt_type_code IS 'Stable short identifier referenced by gd_002_primitive_transitions.primitive_transition_type.';
-
-
---
--- Name: COLUMN gd_019_pt_types.pt_type_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_019_pt_types.pt_type_name IS 'Full canonical name of the Primitive Transition type.';
-
-
---
--- Name: COLUMN gd_019_pt_types.description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_019_pt_types.description IS 'Scope of mutations belonging to this type and their replay participation semantics.';
-
-
---
--- Name: gd_020_scenarios; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_020_scenarios (
-    scenario_id bigint CONSTRAINT gd_020_scenarios_scenario_id_nn NOT NULL,
-    scenario_name text CONSTRAINT gd_020_scenarios_scenario_name_nn NOT NULL,
-    scenario_description text,
-    base_date date CONSTRAINT gd_020_scenarios_base_date_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_020_scenarios_created_at_nn NOT NULL
-);
-
-
-ALTER TABLE global.gd_020_scenarios OWNER TO postgres;
-
---
--- Name: TABLE gd_020_scenarios; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_020_scenarios IS 'Header registry of named future projection scenarios. A Scenario is a branch of hypothetical future reality anchored at base_date. All values before base_date are authoritative and immutable. Hypothetical future values in variable tables are tagged with scenario_id.';
-
-
---
--- Name: COLUMN gd_020_scenarios.scenario_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_020_scenarios.scenario_id IS 'Stable surrogate identity of the scenario. Referenced as scenario_id in all scenario-tagged variable rows.';
-
-
---
--- Name: COLUMN gd_020_scenarios.scenario_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_020_scenarios.scenario_name IS 'Short unique human-readable name identifying this scenario.';
-
-
---
--- Name: COLUMN gd_020_scenarios.scenario_description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_020_scenarios.scenario_description IS 'Narrative description of the assumptions adopted in this scenario.';
-
-
---
--- Name: COLUMN gd_020_scenarios.base_date; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_020_scenarios.base_date IS 'Temporal anchor from which this scenario projects forward. All hypothetical values tagged to this scenario must have applicable periods strictly after base_date.';
-
-
---
--- Name: COLUMN gd_020_scenarios.created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_020_scenarios.created_by IS 'Actor who defined this scenario.';
-
-
---
--- Name: COLUMN gd_020_scenarios.created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_020_scenarios.created_at IS 'Physical insertion timestamp of this scenario header.';
-
-
 --
--- Name: gd_020_scenarios_scenario_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+-- Name: COLUMN "101_gov_identities".created_by_identity_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE global.gd_020_scenarios ALTER COLUMN scenario_id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME global.gd_020_scenarios_scenario_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
+COMMENT ON COLUMN global."101_gov_identities".created_by_identity_id IS 'Governance identity that created this record. Self-referencing FK. NULL only on the bootstrap genesis record — the organizational trust anchor that has no authority predecessor within the system. All subsequent governance identity records must reference an existing identity. This is a governance traceability field, not merely an audit convenience field.';
 
 
 --
--- Name: gd_021_proposals; Type: TABLE; Schema: global; Owner: postgres
+-- Name: 102_gov_proposals; Type: TABLE; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_021_proposals (
+CREATE TABLE global."102_gov_proposals" (
     proposal_id bigint CONSTRAINT gd_021_proposals_proposal_id_nn NOT NULL,
     proposal_type text CONSTRAINT gd_021_proposals_proposal_type_nn NOT NULL,
     proposal_status text DEFAULT 'pending'::text CONSTRAINT gd_021_proposals_proposal_status_nn NOT NULL,
@@ -1618,125 +546,111 @@ CREATE TABLE global.gd_021_proposals (
 );
 
 
-ALTER TABLE global.gd_021_proposals OWNER TO postgres;
+ALTER TABLE global."102_gov_proposals" OWNER TO postgres;
 
 --
--- Name: TABLE gd_021_proposals; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: TABLE "102_gov_proposals"; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON TABLE global.gd_021_proposals IS 'Canonical landing zone for governance-reviewable candidate organizational mutations. Non-authoritative until governance-recognized authoritative commit occurs. Interim structure: proposal_payload is JSONB pending stabilization of per-category typed schemas.';
-
-
---
--- Name: COLUMN gd_021_proposals.proposal_type; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.proposal_type IS 'Category of mutation being proposed. Governs interpretation of proposal_payload.';
+COMMENT ON TABLE global."102_gov_proposals" IS 'Canonical landing zone for governance-reviewable candidate organizational mutations. Non-authoritative until governance-recognized authoritative commit occurs. Interim structure: proposal_payload is JSONB pending stabilization of per-category typed schemas.';
 
 
 --
--- Name: COLUMN gd_021_proposals.proposal_status; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".proposal_type; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_021_proposals.proposal_status IS 'Lifecycle state. Proposals move from pending → approved/rejected/superseded.';
-
-
---
--- Name: COLUMN gd_021_proposals.source_type; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.source_type IS 'What produced this proposal — AI pipeline, escalation, manual, etc.';
+COMMENT ON COLUMN global."102_gov_proposals".proposal_type IS 'Category of mutation being proposed. Governs interpretation of proposal_payload.';
 
 
 --
--- Name: COLUMN gd_021_proposals.source_ref; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".proposal_status; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_021_proposals.source_ref IS 'Free-text reference to the specific source artifact or process run.';
-
-
---
--- Name: COLUMN gd_021_proposals.entity_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.entity_id IS 'Organizational entity this proposal concerns. Nullable — not all proposals are entity-scoped.';
+COMMENT ON COLUMN global."102_gov_proposals".proposal_status IS 'Lifecycle state. Proposals move from pending → approved/rejected/superseded.';
 
 
 --
--- Name: COLUMN gd_021_proposals.scenario_id; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".source_type; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_021_proposals.scenario_id IS 'Scenario context when proposal derives from scenario projection analysis.';
-
-
---
--- Name: COLUMN gd_021_proposals.proposal_description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.proposal_description IS 'Human-readable statement of what is being proposed and the basis for it.';
+COMMENT ON COLUMN global."102_gov_proposals".source_type IS 'What produced this proposal — AI pipeline, escalation, manual, etc.';
 
 
 --
--- Name: COLUMN gd_021_proposals.proposal_payload; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".source_ref; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_021_proposals.proposal_payload IS 'Structured mutation details. Shape varies by proposal_type. Interim JSONB — to be replaced by typed per-category structures once payload schemas are confirmed stable.';
-
-
---
--- Name: COLUMN gd_021_proposals.generated_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.generated_by IS 'Identity of the actor or system that generated this proposal.';
+COMMENT ON COLUMN global."102_gov_proposals".source_ref IS 'Free-text reference to the specific source artifact or process run.';
 
 
 --
--- Name: COLUMN gd_021_proposals.reviewed_by; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".entity_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_021_proposals.reviewed_by IS 'Governance identity that reviewed this proposal. Null until reviewed.';
-
-
---
--- Name: COLUMN gd_021_proposals.reviewed_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.reviewed_at IS 'Timestamp of governance review. Null until reviewed.';
+COMMENT ON COLUMN global."102_gov_proposals".entity_id IS 'Organizational entity this proposal concerns. Nullable — not all proposals are entity-scoped.';
 
 
 --
--- Name: COLUMN gd_021_proposals.review_notes; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".scenario_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_021_proposals.review_notes IS 'Reviewer commentary — rationale for approval, rejection, or conditions.';
-
-
---
--- Name: COLUMN gd_021_proposals.superseded_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_021_proposals.superseded_by IS 'References the proposal that supersedes this one. Superseded proposals remain reconstructable per additive correction doctrine.';
+COMMENT ON COLUMN global."102_gov_proposals".scenario_id IS 'Scenario context when proposal derives from scenario projection analysis.';
 
 
 --
--- Name: gd_021_proposals_proposal_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".proposal_description; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE global.gd_021_proposals ALTER COLUMN proposal_id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME global.gd_021_proposals_proposal_id_seq
-    START WITH 1
-    INCREMENT BY 1
-    NO MINVALUE
-    NO MAXVALUE
-    CACHE 1
-);
+COMMENT ON COLUMN global."102_gov_proposals".proposal_description IS 'Human-readable statement of what is being proposed and the basis for it.';
 
 
 --
--- Name: gd_022_delegations; Type: TABLE; Schema: global; Owner: postgres
+-- Name: COLUMN "102_gov_proposals".proposal_payload; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_022_delegations (
+COMMENT ON COLUMN global."102_gov_proposals".proposal_payload IS 'Structured mutation details. Shape varies by proposal_type. Interim JSONB — to be replaced by typed per-category structures once payload schemas are confirmed stable.';
+
+
+--
+-- Name: COLUMN "102_gov_proposals".generated_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."102_gov_proposals".generated_by IS 'Identity of the actor or system that generated this proposal.';
+
+
+--
+-- Name: COLUMN "102_gov_proposals".reviewed_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."102_gov_proposals".reviewed_by IS 'Governance identity that reviewed this proposal. Null until reviewed.';
+
+
+--
+-- Name: COLUMN "102_gov_proposals".reviewed_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."102_gov_proposals".reviewed_at IS 'Timestamp of governance review. Null until reviewed.';
+
+
+--
+-- Name: COLUMN "102_gov_proposals".review_notes; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."102_gov_proposals".review_notes IS 'Reviewer commentary — rationale for approval, rejection, or conditions.';
+
+
+--
+-- Name: COLUMN "102_gov_proposals".superseded_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."102_gov_proposals".superseded_by IS 'References the proposal that supersedes this one. Superseded proposals remain reconstructable per additive correction doctrine.';
+
+
+--
+-- Name: 103_gov_delegations; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."103_gov_delegations" (
     delegation_id bigint CONSTRAINT gd_022_delegations_delegation_id_nn NOT NULL,
     delegator_id bigint CONSTRAINT gd_022_delegations_delegator_id_nn NOT NULL,
     delegatee_id bigint CONSTRAINT gd_022_delegations_delegatee_id_nn NOT NULL,
@@ -1757,83 +671,1593 @@ CREATE TABLE global.gd_022_delegations (
 );
 
 
-ALTER TABLE global.gd_022_delegations OWNER TO postgres;
+ALTER TABLE global."103_gov_delegations" OWNER TO postgres;
 
 --
--- Name: TABLE gd_022_delegations; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: TABLE "103_gov_delegations"; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON TABLE global.gd_022_delegations IS 'Canonical registry of governance delegations per Doc 21 §6. Delegation represents bounded governance-authorized transfer of limited authority scope. Delegations are explicit, revocable, temporally scoped, reconstructable, and non-inheritable. Expired and revoked delegations are never deleted — historical reconstructability must be preserved.';
-
-
---
--- Name: COLUMN gd_022_delegations.delegator_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_022_delegations.delegator_id IS 'Governance identity issuing the delegation. Must hold the authority being delegated at time of issuance.';
+COMMENT ON TABLE global."103_gov_delegations" IS 'Canonical registry of governance delegations per Doc 21 §6. Delegation represents bounded governance-authorized transfer of limited authority scope. Delegations are explicit, revocable, temporally scoped, reconstructable, and non-inheritable. Expired and revoked delegations are never deleted — historical reconstructability must be preserved.';
 
 
 --
--- Name: COLUMN gd_022_delegations.delegatee_id; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "103_gov_delegations".delegator_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_022_delegations.delegatee_id IS 'Governance identity receiving the delegation. Cannot be the same as delegator_id.';
-
-
---
--- Name: COLUMN gd_022_delegations.delegation_scope; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_022_delegations.delegation_scope IS 'Bounded authority category being transferred. Constrained to the six authorization categories defined in Doc 21 §5.1. Scope remains explicitly bounded — delegation does not grant unrestricted authority.';
+COMMENT ON COLUMN global."103_gov_delegations".delegator_id IS 'Governance identity issuing the delegation. Must hold the authority being delegated at time of issuance.';
 
 
 --
--- Name: COLUMN gd_022_delegations.entity_id; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "103_gov_delegations".delegatee_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_022_delegations.entity_id IS 'Organizational entity this delegation is scoped to. NULL denotes an organisation-wide delegation not bounded to a single entity.';
-
-
---
--- Name: COLUMN gd_022_delegations.valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_022_delegations.valid_from IS 'Timestamp from which the delegation becomes effective.';
+COMMENT ON COLUMN global."103_gov_delegations".delegatee_id IS 'Governance identity receiving the delegation. Cannot be the same as delegator_id.';
 
 
 --
--- Name: COLUMN gd_022_delegations.valid_to; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "103_gov_delegations".delegation_scope; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_022_delegations.valid_to IS 'Timestamp at which the delegation expires. Defaults to effectively unbounded (3001-12-31). Expiry does not destroy historical reconstructability.';
-
-
---
--- Name: COLUMN gd_022_delegations.revoked_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_022_delegations.revoked_at IS 'Timestamp of explicit revocation. NULL while delegation is active. Revocation is recorded additively — the row is never deleted.';
+COMMENT ON COLUMN global."103_gov_delegations".delegation_scope IS 'Bounded authority category being transferred. Constrained to the six authorization categories defined in Doc 21 §5.1. Scope remains explicitly bounded — delegation does not grant unrestricted authority.';
 
 
 --
--- Name: COLUMN gd_022_delegations.revoked_by; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "103_gov_delegations".entity_id; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_022_delegations.revoked_by IS 'Identity that performed the revocation. Must be populated together with revoked_at.';
+COMMENT ON COLUMN global."103_gov_delegations".entity_id IS 'Organizational entity this delegation is scoped to. NULL denotes an organisation-wide delegation not bounded to a single entity.';
 
 
 --
--- Name: COLUMN gd_022_delegations.delegation_description; Type: COMMENT; Schema: global; Owner: postgres
+-- Name: COLUMN "103_gov_delegations".valid_from; Type: COMMENT; Schema: global; Owner: postgres
 --
 
-COMMENT ON COLUMN global.gd_022_delegations.delegation_description IS 'Human-readable statement of scope boundaries, conditions, and governance context of this delegation.';
+COMMENT ON COLUMN global."103_gov_delegations".valid_from IS 'Timestamp from which the delegation becomes effective.';
+
+
+--
+-- Name: COLUMN "103_gov_delegations".valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."103_gov_delegations".valid_to IS 'Timestamp at which the delegation expires. Defaults to effectively unbounded (3001-12-31). Expiry does not destroy historical reconstructability.';
+
+
+--
+-- Name: COLUMN "103_gov_delegations".revoked_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."103_gov_delegations".revoked_at IS 'Timestamp of explicit revocation. NULL while delegation is active. Revocation is recorded additively — the row is never deleted.';
+
+
+--
+-- Name: COLUMN "103_gov_delegations".revoked_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."103_gov_delegations".revoked_by IS 'Identity that performed the revocation. Must be populated together with revoked_at.';
+
+
+--
+-- Name: COLUMN "103_gov_delegations".delegation_description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."103_gov_delegations".delegation_description IS 'Human-readable statement of scope boundaries, conditions, and governance context of this delegation.';
+
+
+--
+-- Name: 104_gov_commits; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."104_gov_commits" (
+    commit_id bigint CONSTRAINT gd_005_commit_records_commit_id_not_null NOT NULL,
+    commit_timestamp timestamp with time zone CONSTRAINT gd_005_commit_records_commit_timestamp_not_null NOT NULL,
+    committing_authority_id bigint CONSTRAINT gd_005_commit_records_committing_authority_id_not_null NOT NULL,
+    commit_type character varying(64) CONSTRAINT gd_005_commit_records_commit_type_not_null NOT NULL,
+    commit_reason text,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_005_commit_records_created_at_not_null NOT NULL,
+    commit_status character varying(32) CONSTRAINT gd_005_commit_records_commit_status_not_null NOT NULL,
+    CONSTRAINT gd_006_commit_records_commit_status_chk CHECK (global.fn_is_valid_commit_status(commit_status)),
+    CONSTRAINT gd_006_commit_records_commit_timestamp_chk CHECK ((commit_timestamp >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
+);
+
+
+ALTER TABLE global."104_gov_commits" OWNER TO postgres;
+
+--
+-- Name: 201_fin_coa; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."201_fin_coa" (
+    account_code character varying(128) CONSTRAINT gd_016_coa_account_code_not_null NOT NULL,
+    parent_account_code character varying(128),
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_016_coa_valid_from_not_null NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_016_coa_valid_to_not_null NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_016_coa_created_at_not_null NOT NULL,
+    account_type text,
+    account_name text,
+    CONSTRAINT gd_016_coa_valid_range_chk CHECK ((valid_to >= valid_from))
+);
+
+
+ALTER TABLE global."201_fin_coa" OWNER TO postgres;
+
+--
+-- Name: TABLE "201_fin_coa"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."201_fin_coa" IS 'Canonical accounting topology. Defines the account hierarchy via parent_account_code self-FK. Account names and multilingual equivalents are held in gd_017_naming_conventions (object_type = ''coa_account'', object_ref = account_code). Rulesets reference accounts via gd_005_ruleset_lines.account_code — the interpretive direction is Ruleset → CoA, not CoA → Ruleset.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".account_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".account_code IS 'Stable canonical accounting topology identifier.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".parent_account_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".parent_account_code IS 'Parent accounting topology element used for hierarchical reconstruction and aggregation.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".valid_from IS 'Beginning of accounting topology applicability interval.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".valid_to IS 'End of accounting topology applicability interval.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".created_by IS 'Infrastructure actor responsible for physical insertion of accounting topology record.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".created_at IS 'Physical insertion timestamp of accounting topology record.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".account_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".account_type IS 'Classification of this account within the financial reporting structure. References gd_028_coa_account_types. Nullable for structural/grouping nodes that exist only as hierarchy containers.';
+
+
+--
+-- Name: COLUMN "201_fin_coa".account_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."201_fin_coa".account_name IS 'Human-readable account label for operational convenience. Canonical and multilingual names are held in gd_017_naming_conventions (object_type = ''coa_account'', object_ref = account_code). This field is a working label, not the authoritative name source.';
+
+
+--
+-- Name: 202_fin_rulesets; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."202_fin_rulesets" (
+    ruleset_id character varying(128) CONSTRAINT gd_008_ruleset_registry_ruleset_id_not_null NOT NULL,
+    ruleset_name character varying(256) CONSTRAINT gd_008_ruleset_registry_ruleset_name_not_null NOT NULL,
+    ruleset_type character varying(64) CONSTRAINT gd_008_ruleset_registry_ruleset_type_not_null NOT NULL,
+    ruleset_description text,
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_from_not_null NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_to_not_null NOT NULL,
+    governance_scope_id bigint,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_008_ruleset_registry_created_at_not_null NOT NULL,
+    CONSTRAINT gd_008_ruleset_registry_valid_range_chk CHECK ((valid_to >= valid_from))
+);
+
+
+ALTER TABLE global."202_fin_rulesets" OWNER TO postgres;
+
+--
+-- Name: TABLE "202_fin_rulesets"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."202_fin_rulesets" IS 'Canonical registry of governance-approved Rulesets participating in deterministic reconstruction and replay.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".ruleset_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".ruleset_id IS 'Stable canonical Ruleset identity.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".ruleset_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".ruleset_name IS 'Human-readable Ruleset name.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".ruleset_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".ruleset_type IS 'Canonical Ruleset classification.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".ruleset_description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".ruleset_description IS 'Human-readable Ruleset explanation and applicability notes.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".valid_from IS 'Beginning of Ruleset applicability interval.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".valid_to IS 'End of Ruleset applicability interval.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".governance_scope_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".governance_scope_id IS 'Governance applicability scope participating in Ruleset authorization and replay semantics.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".created_by IS 'Infrastructure actor responsible for physical Ruleset registration.';
+
+
+--
+-- Name: COLUMN "202_fin_rulesets".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."202_fin_rulesets".created_at IS 'Physical insertion timestamp of Ruleset registry record.';
+
+
+--
+-- Name: 203_fin_ruleset_lines; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."203_fin_ruleset_lines" (
+    line_id bigint CONSTRAINT gd_009_ruleset_lines_line_id_not_null NOT NULL,
+    ruleset_id character varying(128) CONSTRAINT gd_009_ruleset_lines_ruleset_id_not_null NOT NULL,
+    entity_1_id bigint,
+    entity_2_id bigint,
+    trf_direction character varying(32) CONSTRAINT gd_009_ruleset_lines_trf_direction_not_null NOT NULL,
+    amount numeric(20,6),
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_from_not_null NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_to_not_null NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_009_ruleset_lines_created_at_not_null NOT NULL,
+    line_description text,
+    account_code character varying(128),
+    CONSTRAINT gd_009_ruleset_lines_transformation_direction_chk CHECK (((trf_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying, 'recognize'::character varying, 'derecognize'::character varying, 'transfer_in'::character varying, 'transfer_out'::character varying, 'debit'::character varying, 'credit'::character varying])::text[]))),
+    CONSTRAINT gd_009_ruleset_lines_valid_range_chk CHECK ((valid_to >= valid_from))
+);
+
+
+ALTER TABLE global."203_fin_ruleset_lines" OWNER TO postgres;
+
+--
+-- Name: COLUMN "203_fin_ruleset_lines".entity_1_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."203_fin_ruleset_lines".entity_1_id IS 'Primary organizational entity this Ruleset line applies to. Nullable — not all Ruleset lines are entity-scoped. References gd_004_entities.entity_id.';
+
+
+--
+-- Name: COLUMN "203_fin_ruleset_lines".entity_2_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."203_fin_ruleset_lines".entity_2_id IS 'Secondary organizational entity this Ruleset line applies to. Used for inter-entity rules such as intercompany transfers. Nullable. References gd_004_entities.entity_id.';
+
+
+--
+-- Name: COLUMN "203_fin_ruleset_lines".account_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."203_fin_ruleset_lines".account_code IS 'Chart of Accounts identifier this Ruleset line applies to. Nullable — not all Ruleset lines are account-scoped. References gd_016_coa.account_code.';
+
+
+--
+-- Name: 301_evt_events; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."301_evt_events" (
+    event_id bigint CONSTRAINT gd_001_events_event_id_not_null NOT NULL,
+    event_type character varying(64) CONSTRAINT gd_001_events_event_type_not_null NOT NULL,
+    source_type character varying(32) CONSTRAINT gd_001_events_source_type_not_null NOT NULL,
+    source_ref character varying(256),
+    valid_time timestamp with time zone CONSTRAINT gd_001_events_valid_time_not_null NOT NULL,
+    assertion_time timestamp with time zone CONSTRAINT gd_001_events_assertion_time_not_null NOT NULL,
+    entity_id bigint CONSTRAINT gd_001_events_entity_id_not_null NOT NULL,
+    governance_scope_id bigint,
+    commit_id bigint CONSTRAINT gd_001_events_commit_id_not_null NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_001_events_created_at_not_null NOT NULL,
+    event_description text,
+    event_status character varying(32) CONSTRAINT gd_001_events_event_status_not_null NOT NULL,
+    corrective_of_event_id bigint,
+    replay_sequence bigint CONSTRAINT gd_001_events_replay_sequence_not_null NOT NULL,
+    CONSTRAINT gd_001_events_assertion_time_chk CHECK ((assertion_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone)),
+    CONSTRAINT gd_001_events_corrective_consistency_chk CHECK (((corrective_of_event_id IS NULL) OR ((corrective_of_event_id IS NOT NULL) AND ((event_type)::text = 'corrective'::text)))),
+    CONSTRAINT gd_001_events_event_status_type_chk CHECK (global.fn_is_valid_event_status(event_status)),
+    CONSTRAINT gd_001_events_valid_time_chk CHECK ((valid_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
+);
+
+
+ALTER TABLE global."301_evt_events" OWNER TO postgres;
+
+--
+-- Name: COLUMN "301_evt_events".corrective_of_event_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."301_evt_events".corrective_of_event_id IS 'References the Event this Event additively corrects. NULL on original Events. Populated only on corrective Events. Original Events are never modified — correction linkage is carried exclusively by the corrective Event. May form a chain: each corrective Event points to its immediate predecessor in the correction history.';
+
+
+--
+-- Name: COLUMN "301_evt_events".replay_sequence; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."301_evt_events".replay_sequence IS 'Globally monotonic database-assigned sequence providing deterministic replay sub-ordering within and across commits. Assigned exclusively by the database — never by the application layer. Canonical replay ordering: ORDER BY commit_id, replay_sequence. Immutable after assignment.';
+
+
+--
+-- Name: 302_evt_primitive_transitions; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."302_evt_primitive_transitions" (
+    primitive_transition_id bigint CONSTRAINT gd_002_primitive_transitions_primitive_transition_id_not_null NOT NULL,
+    event_id bigint CONSTRAINT gd_002_primitive_transitions_event_id_not_null NOT NULL,
+    entity_id bigint CONSTRAINT gd_002_primitive_transitions_entity_id_not_null NOT NULL,
+    account_code character varying(128) CONSTRAINT gd_002_primitive_transitions_account_code_not_null NOT NULL,
+    transformation_direction character varying(32) CONSTRAINT gd_002_primitive_transitions_transformation_direction_not_null NOT NULL,
+    amount numeric(20,6) CONSTRAINT gd_002_primitive_transitions_amount_not_null NOT NULL,
+    currency_code character(3),
+    valid_time timestamp with time zone CONSTRAINT gd_002_primitive_transitions_valid_time_not_null NOT NULL,
+    assertion_time timestamp with time zone CONSTRAINT gd_002_primitive_transitions_assertion_time_not_null NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_002_primitive_transitions_created_at_not_null NOT NULL,
+    transition_description text,
+    primitive_transition_type text CONSTRAINT gd_002_primitive_transitions_type_nn NOT NULL,
+    CONSTRAINT gd_002_primitive_transitions_amount_chk CHECK ((amount >= (0)::numeric)),
+    CONSTRAINT gd_002_primitive_transitions_assertion_time_chk CHECK ((assertion_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone)),
+    CONSTRAINT gd_002_primitive_transitions_direction_chk CHECK (((transformation_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying])::text[]))),
+    CONSTRAINT gd_002_primitive_transitions_valid_time_chk CHECK ((valid_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
+);
+
+
+ALTER TABLE global."302_evt_primitive_transitions" OWNER TO postgres;
+
+--
+-- Name: TABLE "302_evt_primitive_transitions"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."302_evt_primitive_transitions" IS 'Canonical atomic state mutations participating in deterministic replay and organizational reconstruction.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".primitive_transition_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".primitive_transition_id IS 'Stable internal identity of primitive transition.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".event_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".event_id IS 'References originating Event producing primitive state mutation.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".entity_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".entity_id IS 'Organizational entity whose state is affected by primitive transition.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".account_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".account_code IS 'Accounting state topology element affected by primitive transition.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".transformation_direction; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".transformation_direction IS 'Canonical polarity of primitive organizational state mutation.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".amount; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".amount IS 'Quantitative magnitude of primitive state mutation.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".currency_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".currency_code IS 'Currency applicable to quantitative mutation where relevant.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".valid_time; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".valid_time IS 'Business-effective timestamp of primitive transition applicability.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".assertion_time; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".assertion_time IS 'Timestamp at which primitive transition became known to the system.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".created_by IS 'Infrastructure actor responsible for physical insertion of primitive transition.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".created_at IS 'Physical insertion timestamp of primitive transition.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".transition_description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".transition_description IS 'Human-readable explanation of primitive transition semantics.';
+
+
+--
+-- Name: COLUMN "302_evt_primitive_transitions".primitive_transition_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."302_evt_primitive_transitions".primitive_transition_type IS 'Canonical type of this Primitive Transition. Determines replay stream participation. References gd_019_pt_types.pt_type_code.';
+
+
+--
+-- Name: 401_ref_exchange_rates; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."401_ref_exchange_rates" (
+    rate_id bigint CONSTRAINT gd_004_exchange_rates_rate_id_not_null NOT NULL,
+    rate_timestamp timestamp with time zone CONSTRAINT gd_004_exchange_rates_rate_timestamp_not_null NOT NULL,
+    base_currency character(3) CONSTRAINT gd_004_exchange_rates_base_currency_not_null NOT NULL,
+    quote_currency character(3) CONSTRAINT gd_004_exchange_rates_quote_currency_not_null NOT NULL,
+    exchange_rate numeric(18,6) CONSTRAINT gd_004_exchange_rates_exchange_rate_not_null NOT NULL,
+    rate_code character varying(64)
+);
+
+
+ALTER TABLE global."401_ref_exchange_rates" OWNER TO postgres;
+
+--
+-- Name: TABLE "401_ref_exchange_rates"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."401_ref_exchange_rates" IS 'Canonical exchange rate registry participating in deterministic replay and financial reconstruction.';
+
+
+--
+-- Name: COLUMN "401_ref_exchange_rates".rate_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."401_ref_exchange_rates".rate_id IS 'Stable internal identity of exchange rate record.';
+
+
+--
+-- Name: COLUMN "401_ref_exchange_rates".rate_timestamp; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."401_ref_exchange_rates".rate_timestamp IS 'Timestamp at which exchange rate becomes applicable for replay and interpretation.';
+
+
+--
+-- Name: COLUMN "401_ref_exchange_rates".base_currency; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."401_ref_exchange_rates".base_currency IS 'Source currency participating in exchange rate transformation.';
+
+
+--
+-- Name: COLUMN "401_ref_exchange_rates".quote_currency; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."401_ref_exchange_rates".quote_currency IS 'Target currency participating in exchange rate transformation.';
+
+
+--
+-- Name: COLUMN "401_ref_exchange_rates".exchange_rate; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."401_ref_exchange_rates".exchange_rate IS 'Deterministic conversion ratio between base and quote currency.';
+
+
+--
+-- Name: COLUMN "401_ref_exchange_rates".rate_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."401_ref_exchange_rates".rate_code IS 'Canonical exchange rate source or methodology identifier.';
+
+
+--
+-- Name: 402_ref_inflation_rates; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."402_ref_inflation_rates" (
+    inflation_rate_id bigint CONSTRAINT gd_014_inflation_rates_inflation_rate_id_nn NOT NULL,
+    applicable_year integer CONSTRAINT gd_014_inflation_rates_applicable_year_nn NOT NULL,
+    currency_code character(3) CONSTRAINT gd_014_inflation_rates_currency_code_nn NOT NULL,
+    inflation_rate numeric(10,6) CONSTRAINT gd_014_inflation_rates_inflation_rate_nn NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_014_inflation_rates_created_at_nn NOT NULL,
+    rate_reference character varying(128),
+    CONSTRAINT gd_014_inflation_rates_rate_range_chk CHECK (((inflation_rate >= ('-100'::integer)::numeric) AND (inflation_rate <= (1000000)::numeric))),
+    CONSTRAINT gd_014_inflation_rates_year_chk CHECK (((applicable_year >= 1900) AND (applicable_year <= 3000)))
+);
+
+
+ALTER TABLE global."402_ref_inflation_rates" OWNER TO postgres;
+
+--
+-- Name: COLUMN "402_ref_inflation_rates".rate_reference; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."402_ref_inflation_rates".rate_reference IS 'Canonical identifier of the data source used to establish this rate. References gd_018_rate_codes. Nullable pending governance consensus on acceptable source registry for historical rows.';
+
+
+--
+-- Name: 403_ref_currencies; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."403_ref_currencies" (
+    currency_id bigint CONSTRAINT gd_012_currency_registry_currency_id_not_null NOT NULL,
+    currency_name character varying(128) CONSTRAINT gd_012_currency_registry_currency_name_not_null NOT NULL,
+    iso_alpha_2 character(2),
+    iso_alpha_3 character(3) CONSTRAINT gd_012_currency_registry_iso_alpha_3_not_null NOT NULL,
+    currency_symbol character varying(16),
+    issuing_jurisdiction character varying(128),
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_012_currency_registry_valid_from_not_null NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_012_currency_registry_valid_to_not_null NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_012_currency_registry_created_at_not_null NOT NULL,
+    CONSTRAINT gd_012_currency_registry_valid_range_chk CHECK ((valid_to >= valid_from))
+);
+
+
+ALTER TABLE global."403_ref_currencies" OWNER TO postgres;
+
+--
+-- Name: TABLE "403_ref_currencies"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."403_ref_currencies" IS 'Canonical registry of currencies participating in deterministic replay, valuation and financial reconstruction.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".currency_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".currency_id IS 'Stable internal identity of currency record.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".currency_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".currency_name IS 'Human-readable canonical currency name.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".iso_alpha_2; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".iso_alpha_2 IS 'Two-letter canonical currency abbreviation where applicable.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".iso_alpha_3; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".iso_alpha_3 IS 'Three-letter ISO currency code used in replay and reporting semantics.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".currency_symbol; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".currency_symbol IS 'Human-readable symbol representing currency in disclosure and reporting contexts.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".issuing_jurisdiction; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".issuing_jurisdiction IS 'Jurisdiction or authority associated with currency issuance.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".valid_from IS 'Beginning of currency applicability interval.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".valid_to IS 'End of currency applicability interval.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".created_by IS 'Infrastructure actor responsible for physical insertion of currency record.';
+
+
+--
+-- Name: COLUMN "403_ref_currencies".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."403_ref_currencies".created_at IS 'Physical insertion timestamp of currency record.';
+
+
+--
+-- Name: 404_ref_rate_sources; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."404_ref_rate_sources" (
+    rate_code text CONSTRAINT gd_018_rate_codes_rate_code_not_null NOT NULL,
+    rate_name text CONSTRAINT gd_018_rate_codes_rate_name_not_null NOT NULL,
+    rate_type text CONSTRAINT gd_018_rate_codes_rate_type_not_null NOT NULL,
+    provider text,
+    description text
+);
+
+
+ALTER TABLE global."404_ref_rate_sources" OWNER TO postgres;
+
+--
+-- Name: 405_ref_names; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."405_ref_names" (
+    naming_id bigint CONSTRAINT gd_017_naming_conventions_naming_id_not_null NOT NULL,
+    object_type character varying(128) CONSTRAINT gd_017_naming_conventions_object_type_not_null NOT NULL,
+    object_ref text CONSTRAINT gd_017_naming_conventions_object_id_not_null NOT NULL,
+    canonical_name character varying(256) CONSTRAINT gd_017_naming_conventions_canonical_name_not_null NOT NULL,
+    translation_language character(2) CONSTRAINT gd_017_naming_conventions_translation_language_not_null NOT NULL,
+    translated_name character varying(256) CONSTRAINT gd_017_naming_conventions_translated_name_not_null NOT NULL,
+    translation_context character varying(128),
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_017_naming_conventions_created_at_not_null NOT NULL
+);
+
+
+ALTER TABLE global."405_ref_names" OWNER TO postgres;
+
+--
+-- Name: TABLE "405_ref_names"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."405_ref_names" IS 'Canonical multilingual naming registry used for disclosure, reporting, localization and governance-readable reconstruction.';
+
+
+--
+-- Name: COLUMN "405_ref_names".naming_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".naming_id IS 'Stable internal identity of naming convention record.';
+
+
+--
+-- Name: COLUMN "405_ref_names".object_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".object_type IS 'Canonical classification of organizational object receiving translated naming semantics.';
+
+
+--
+-- Name: COLUMN "405_ref_names".object_ref; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".object_ref IS 'Primary key value of the referenced object, stored as text. Holds stringified integer PKs (e.g. ''42'') for bigint-keyed tables and varchar PKs as-is (e.g. ''ACC-001-CASH'') for text-keyed tables such as gd_016_coa. Interpreted in conjunction with object_type. No FK enforcement — polymorphic references cannot be constrained at the database level.';
+
+
+--
+-- Name: COLUMN "405_ref_names".canonical_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".canonical_name IS 'Primary canonical organizational name of object.';
+
+
+--
+-- Name: COLUMN "405_ref_names".translation_language; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".translation_language IS 'Language code of translated naming representation.';
+
+
+--
+-- Name: COLUMN "405_ref_names".translated_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".translated_name IS 'Localized or translated organizational naming representation.';
+
+
+--
+-- Name: COLUMN "405_ref_names".translation_context; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".translation_context IS 'Optional disclosure, legal or reporting context governing translation applicability.';
+
+
+--
+-- Name: COLUMN "405_ref_names".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".created_by IS 'Infrastructure actor responsible for physical insertion of naming convention record.';
+
+
+--
+-- Name: COLUMN "405_ref_names".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."405_ref_names".created_at IS 'Physical insertion timestamp of naming convention record.';
+
+
+--
+-- Name: 406_ref_pt_types; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."406_ref_pt_types" (
+    pt_type_code text CONSTRAINT gd_019_pt_types_pt_type_code_nn NOT NULL,
+    pt_type_name text CONSTRAINT gd_019_pt_types_pt_type_name_nn NOT NULL,
+    description text
+);
+
+
+ALTER TABLE global."406_ref_pt_types" OWNER TO postgres;
+
+--
+-- Name: TABLE "406_ref_pt_types"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."406_ref_pt_types" IS 'Canonical registry of Primitive Transition types as defined in Doc 19. Determines which reconstruction stream a Primitive Transition participates in.';
+
+
+--
+-- Name: COLUMN "406_ref_pt_types".pt_type_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."406_ref_pt_types".pt_type_code IS 'Stable short identifier referenced by gd_002_primitive_transitions.primitive_transition_type.';
+
+
+--
+-- Name: COLUMN "406_ref_pt_types".pt_type_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."406_ref_pt_types".pt_type_name IS 'Full canonical name of the Primitive Transition type.';
+
+
+--
+-- Name: COLUMN "406_ref_pt_types".description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."406_ref_pt_types".description IS 'Scope of mutations belonging to this type and their replay participation semantics.';
+
+
+--
+-- Name: 407_ref_statuses; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."407_ref_statuses" (
+    status_code character varying(32) CONSTRAINT gd_006_event_status_registry_event_status_code_not_null NOT NULL,
+    status_name character varying(128) CONSTRAINT gd_006_event_status_registry_event_status_name_not_null NOT NULL,
+    status_description text,
+    is_authoritative_replay_eligible boolean DEFAULT false CONSTRAINT gd_006_event_status_registr_is_authoritative_replay_el_not_null NOT NULL,
+    is_terminal boolean DEFAULT false CONSTRAINT gd_006_event_status_registry_is_terminal_not_null NOT NULL,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_006_event_status_registry_created_at_not_null NOT NULL,
+    status_type character varying(64) DEFAULT 'event_status'::character varying CONSTRAINT gd_006_status_registry_status_type_not_null NOT NULL
+);
+
+
+ALTER TABLE global."407_ref_statuses" OWNER TO postgres;
+
+--
+-- Name: 408_ref_event_types; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."408_ref_event_types" (
+    event_type_code text CONSTRAINT gd_023_event_types_code_nn NOT NULL,
+    event_type_name text CONSTRAINT gd_023_event_types_name_nn NOT NULL,
+    description text
+);
+
+
+ALTER TABLE global."408_ref_event_types" OWNER TO postgres;
+
+--
+-- Name: TABLE "408_ref_event_types"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."408_ref_event_types" IS 'Canonical registry of Event types as defined in Doc 19 §5. Referenced by gd_001_events.event_type. Extending the type set requires only an INSERT — no DDL on gd_001_events.';
+
+
+--
+-- Name: COLUMN "408_ref_event_types".event_type_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."408_ref_event_types".event_type_code IS 'Stable short identifier referenced by gd_001_events.event_type.';
+
+
+--
+-- Name: COLUMN "408_ref_event_types".event_type_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."408_ref_event_types".event_type_name IS 'Full canonical name of the Event type per Doc 19.';
+
+
+--
+-- Name: COLUMN "408_ref_event_types".description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."408_ref_event_types".description IS 'Scope of Events belonging to this type and their replay participation semantics.';
+
+
+--
+-- Name: 409_ref_coa_account_types; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."409_ref_coa_account_types" (
+    account_type_code text CONSTRAINT gd_028_coa_account_types_code_nn NOT NULL,
+    account_type_name text CONSTRAINT gd_028_coa_account_types_name_nn NOT NULL,
+    description text
+);
+
+
+ALTER TABLE global."409_ref_coa_account_types" OWNER TO postgres;
+
+--
+-- Name: TABLE "409_ref_coa_account_types"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."409_ref_coa_account_types" IS 'Registry of CoA account type classifications. Determines which financial statement an account participates in and governs its role in reconstruction and budgeting.';
+
+
+--
+-- Name: COLUMN "409_ref_coa_account_types".account_type_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."409_ref_coa_account_types".account_type_code IS 'Stable short identifier referenced by gd_016_coa.account_type.';
+
+
+--
+-- Name: 410_cal_holidays; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."410_cal_holidays" (
+    holiday_id bigint CONSTRAINT gd_011_holidays_holiday_id_not_null NOT NULL,
+    country_code character(2) CONSTRAINT gd_011_holidays_country_code_not_null NOT NULL,
+    holiday_name character varying(256) CONSTRAINT gd_011_holidays_holiday_name_not_null NOT NULL,
+    holiday_type character varying(64) CONSTRAINT gd_011_holidays_holiday_type_not_null NOT NULL,
+    holiday_date date CONSTRAINT gd_011_holidays_holiday_date_not_null NOT NULL,
+    created_by character varying(128),
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_011_holidays_created_at_not_null NOT NULL
+);
+
+
+ALTER TABLE global."410_cal_holidays" OWNER TO postgres;
+
+--
+-- Name: TABLE "410_cal_holidays"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."410_cal_holidays" IS 'Canonical registry of jurisdictional and organizational holidays participating in deterministic replay, scheduling and governance timing semantics.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".holiday_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".holiday_id IS 'Stable internal identity of holiday record.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".country_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".country_code IS 'Jurisdictional country code associated with holiday applicability.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".holiday_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".holiday_name IS 'Human-readable designation of holiday.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".holiday_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".holiday_type IS 'Canonical classification of holiday applicability and governance semantics.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".holiday_date; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".holiday_date IS 'Calendar date on which holiday becomes applicable.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".created_by IS 'Infrastructure actor responsible for physical insertion of holiday record.';
+
+
+--
+-- Name: COLUMN "410_cal_holidays".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_cal_holidays".created_at IS 'Physical insertion timestamp of holiday record.';
+
+
+--
+-- Name: 410_ref_arrangement_types; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."410_ref_arrangement_types" (
+    arrangement_type_code text CONSTRAINT gd_024_lat_code_nn NOT NULL,
+    arrangement_type_name text CONSTRAINT gd_024_lat_name_nn NOT NULL,
+    arrangement_category text CONSTRAINT gd_024_lat_category_nn NOT NULL,
+    jurisdiction_code character(2),
+    description text,
+    CONSTRAINT gd_024_lat_category_chk CHECK ((arrangement_category = ANY (ARRAY['employment'::text, 'private_entrepreneur'::text, 'civil_contract'::text, 'secondment'::text, 'management_contract'::text, 'advisory'::text, 'internship'::text])))
+);
+
+
+ALTER TABLE global."410_ref_arrangement_types" OWNER TO postgres;
+
+--
+-- Name: TABLE "410_ref_arrangement_types"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."410_ref_arrangement_types" IS 'Registry of legal arrangement types governing human engagement. arrangement_category determines financial reconstruction semantics (payroll obligations, tax treatment, social contributions).';
+
+
+--
+-- Name: COLUMN "410_ref_arrangement_types".arrangement_type_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_ref_arrangement_types".arrangement_type_code IS 'Stable short identifier referenced by gd_026_teammembers.';
+
+
+--
+-- Name: COLUMN "410_ref_arrangement_types".arrangement_category; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_ref_arrangement_types".arrangement_category IS 'Broad category governing financial and governance reconstruction semantics.';
+
+
+--
+-- Name: COLUMN "410_ref_arrangement_types".jurisdiction_code; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."410_ref_arrangement_types".jurisdiction_code IS 'ISO 3166-1 alpha-2 country code of the governing legal jurisdiction. Null for jurisdiction-agnostic types (secondment, advisory).';
+
+
+--
+-- Name: 501_hr_arrangements; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."501_hr_arrangements" (
+    arrangement_id bigint CONSTRAINT gd_026_tm_id_nn NOT NULL,
+    person_id bigint CONSTRAINT gd_026_tm_person_nn NOT NULL,
+    entity_id bigint,
+    arrangement_type_code text CONSTRAINT gd_026_tm_type_nn NOT NULL,
+    position_id bigint,
+    project_id bigint,
+    valid_from timestamp with time zone CONSTRAINT gd_026_tm_from_nn NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_026_tm_to_nn NOT NULL,
+    time_allocation numeric CONSTRAINT gd_026_tm_alloc_nn NOT NULL,
+    pay_currency character(3),
+    pay_unit text,
+    pay_amount numeric,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_026_tm_created_at_nn NOT NULL,
+    CONSTRAINT gd_026_tm_allocation_chk CHECK (((time_allocation > (0)::numeric) AND (time_allocation <= 1.0))),
+    CONSTRAINT gd_026_tm_pay_unit_chk CHECK ((pay_unit = ANY (ARRAY['hour'::text, 'day'::text, 'month'::text, 'year'::text, 'delivery'::text]))),
+    CONSTRAINT gd_026_tm_payment_consistency_chk CHECK ((((pay_currency IS NULL) AND (pay_unit IS NULL) AND (pay_amount IS NULL)) OR ((pay_currency IS NOT NULL) AND (pay_unit IS NOT NULL) AND (pay_amount IS NOT NULL)))),
+    CONSTRAINT gd_026_tm_temporal_chk CHECK ((valid_from < valid_to))
+);
+
+
+ALTER TABLE global."501_hr_arrangements" OWNER TO postgres;
+
+--
+-- Name: TABLE "501_hr_arrangements"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."501_hr_arrangements" IS 'Team member arrangements. Each row represents one immutable state: a specific combination of person, arrangement type, position, project, time allocation, and compensation valid for a defined period. Any change to any attribute produces a new row. valid_from/valid_to are the canonical state validity bounds — the prior four-column date model (arrangement + project dates) has been consolidated into this single pair.';
+
+
+--
+-- Name: COLUMN "501_hr_arrangements".position_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."501_hr_arrangements".position_id IS 'Consolidated from entity_position_id and project_position_id. The position carries its own class (statutory/operational) and scope (entity_id or project_id) — separate columns were redundant.';
+
+
+--
+-- Name: COLUMN "501_hr_arrangements".valid_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."501_hr_arrangements".valid_from IS 'Start of this specific arrangement state. Derived from the more specific of project_valid_from or arrangement_valid_from in the prior model.';
+
+
+--
+-- Name: COLUMN "501_hr_arrangements".valid_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."501_hr_arrangements".valid_to IS 'End of this specific arrangement state. Derived from the more specific of project_valid_to or arrangement_valid_to in the prior model.';
+
+
+--
+-- Name: 502_hr_positions; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."502_hr_positions" (
+    position_id bigint CONSTRAINT gd_027_positions_id_nn NOT NULL,
+    position_class text CONSTRAINT gd_027_positions_class_nn NOT NULL,
+    position_name text CONSTRAINT gd_027_positions_name_nn NOT NULL,
+    position_superior_id bigint,
+    position_description text,
+    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_027_positions_valid_from_nn NOT NULL,
+    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_027_positions_valid_to_nn NOT NULL,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_027_positions_created_at_nn NOT NULL,
+    project_id bigint,
+    entity_id bigint,
+    CONSTRAINT gd_027_positions_class_chk CHECK ((position_class = ANY (ARRAY['statutory'::text, 'operational'::text]))),
+    CONSTRAINT gd_027_positions_no_self_superior_chk CHECK (((position_superior_id IS NULL) OR (position_superior_id <> position_id))),
+    CONSTRAINT gd_027_positions_scope_exclusivity_chk CHECK (((project_id IS NULL) OR (entity_id IS NULL))),
+    CONSTRAINT gd_027_positions_superior_context_chk CHECK (global.fn_is_valid_position_superior(position_superior_id, position_class, project_id, entity_id)),
+    CONSTRAINT gd_027_positions_temporal_chk CHECK ((valid_from < valid_to))
+);
+
+
+ALTER TABLE global."502_hr_positions" OWNER TO postgres;
+
+--
+-- Name: TABLE "502_hr_positions"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."502_hr_positions" IS 'Canonical position registry supporting two independent hierarchies: entity_position (formal statutory org structure) and project_position (project delivery structure). Hierarchy enforced within class only — cross-class superior references are prevented by the composite FK on (position_superior_id, position_class). Recursive CTE traversal produces full org/project tree from this table.';
+
+
+--
+-- Name: COLUMN "502_hr_positions".position_class; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."502_hr_positions".position_class IS 'entity_position: formal role within legal entity — appears on statutory filings. project_position: operational role within a project delivery context.';
+
+
+--
+-- Name: COLUMN "502_hr_positions".position_superior_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."502_hr_positions".position_superior_id IS 'Immediate superior position within the same class. NULL denotes a root node (top of hierarchy). Composite FK enforces same-class constraint — cross-class reference fails at insert.';
+
+
+--
+-- Name: COLUMN "502_hr_positions".position_description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."502_hr_positions".position_description IS 'Scope, responsibilities, and authority boundaries of this position.';
+
+
+--
+-- Name: COLUMN "502_hr_positions".project_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."502_hr_positions".project_id IS 'Project this position belongs to. NULL for statutory (entity-scoped) or universal positions. Mutually exclusive with entity_id.';
+
+
+--
+-- Name: COLUMN "502_hr_positions".entity_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."502_hr_positions".entity_id IS 'Entity this statutory position belongs to. NULL for operational or universal positions. Mutually exclusive with project_id.';
+
+
+--
+-- Name: 601_scen_budgets; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."601_scen_budgets" (
+    budget_id bigint CONSTRAINT gd_029_budgets_id_nn NOT NULL,
+    budget_name text CONSTRAINT gd_029_budgets_name_nn NOT NULL,
+    budget_type text CONSTRAINT gd_029_budgets_type_nn NOT NULL,
+    scenario_id bigint CONSTRAINT gd_029_budgets_scenario_id_nn NOT NULL,
+    entity_id bigint,
+    period_from date CONSTRAINT gd_029_budgets_period_from_nn NOT NULL,
+    period_to date CONSTRAINT gd_029_budgets_period_to_nn NOT NULL,
+    approved_by bigint,
+    approved_at timestamp with time zone,
+    superseded_by_budget_id bigint,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_029_budgets_created_at_nn NOT NULL,
+    CONSTRAINT gd_029_budgets_approval_consistency_chk CHECK ((((approved_by IS NULL) AND (approved_at IS NULL)) OR ((approved_by IS NOT NULL) AND (approved_at IS NOT NULL)))),
+    CONSTRAINT gd_029_budgets_no_self_supersession_chk CHECK (((superseded_by_budget_id IS NULL) OR (superseded_by_budget_id <> budget_id))),
+    CONSTRAINT gd_029_budgets_period_chk CHECK ((period_from < period_to)),
+    CONSTRAINT gd_029_budgets_type_chk CHECK ((budget_type = ANY (ARRAY['annual'::text, 'quarterly'::text, 'monthly'::text, 'rolling_forecast'::text, 'supplementary'::text])))
+);
+
+
+ALTER TABLE global."601_scen_budgets" OWNER TO postgres;
+
+--
+-- Name: TABLE "601_scen_budgets"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."601_scen_budgets" IS 'Governance-approved budget header table. Each row is a named budget for a specific entity and period, linked to the Scenario holding its forward values. Budget line items flow through Event/PT machinery tagged to the linked Scenario. Plan-to-fact: actuals WHERE scenario_id IS NULL, budget WHERE scenario_id = gd_029_budgets.scenario_id. Revision chain: superseded_by_budget_id links old version to replacement.';
+
+
+--
+-- Name: COLUMN "601_scen_budgets".budget_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."601_scen_budgets".budget_type IS 'Constrained category: annual, quarterly, monthly, rolling_forecast, supplementary. Defines the planning granularity and governance weight.';
+
+
+--
+-- Name: COLUMN "601_scen_budgets".scenario_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."601_scen_budgets".scenario_id IS 'The Scenario holding this budget''s forward values. Must have scenario_status = ''approved'' for the budget to be active.';
+
+
+--
+-- Name: COLUMN "601_scen_budgets".period_from; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."601_scen_budgets".period_from IS 'First day of the budget period (inclusive).';
+
+
+--
+-- Name: COLUMN "601_scen_budgets".period_to; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."601_scen_budgets".period_to IS 'Last day of the budget period (inclusive).';
+
+
+--
+-- Name: COLUMN "601_scen_budgets".approved_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."601_scen_budgets".approved_by IS 'Governance identity that formally approved this budget. Populated together with approved_at.';
+
+
+--
+-- Name: COLUMN "601_scen_budgets".superseded_by_budget_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."601_scen_budgets".superseded_by_budget_id IS 'Points to the revised budget that replaces this one. Original budget row is retained — additive correction doctrine applies.';
+
+
+--
+-- Name: 602_scen_scenarios; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."602_scen_scenarios" (
+    scenario_id bigint CONSTRAINT gd_020_scenarios_scenario_id_nn NOT NULL,
+    scenario_name text CONSTRAINT gd_020_scenarios_scenario_name_nn NOT NULL,
+    scenario_description text,
+    base_date date CONSTRAINT gd_020_scenarios_base_date_nn NOT NULL,
+    created_by text,
+    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_020_scenarios_created_at_nn NOT NULL,
+    scenario_type text DEFAULT 'projection'::text CONSTRAINT gd_020_scenarios_type_nn NOT NULL,
+    scenario_status character varying(32) DEFAULT 'draft'::character varying CONSTRAINT gd_020_scenarios_status_nn NOT NULL,
+    CONSTRAINT gd_020_scenarios_status_chk CHECK (global.fn_is_valid_scenario_status(scenario_status)),
+    CONSTRAINT gd_020_scenarios_type_chk CHECK ((scenario_type = ANY (ARRAY['projection'::text, 'budget'::text, 'stress_test'::text, 'base_case'::text])))
+);
+
+
+ALTER TABLE global."602_scen_scenarios" OWNER TO postgres;
+
+--
+-- Name: TABLE "602_scen_scenarios"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."602_scen_scenarios" IS 'Header registry of named future projection scenarios. A Scenario is a branch of hypothetical future reality anchored at base_date. All values before base_date are authoritative and immutable. Hypothetical future values in variable tables are tagged with scenario_id.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".scenario_id; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".scenario_id IS 'Stable surrogate identity of the scenario. Referenced as scenario_id in all scenario-tagged variable rows.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".scenario_name; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".scenario_name IS 'Short unique human-readable name identifying this scenario.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".scenario_description; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".scenario_description IS 'Narrative description of the assumptions adopted in this scenario.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".base_date; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".base_date IS 'Temporal anchor from which this scenario projects forward. All hypothetical values tagged to this scenario must have applicable periods strictly after base_date.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".created_by; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".created_by IS 'Actor who defined this scenario.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".created_at; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".created_at IS 'Physical insertion timestamp of this scenario header.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".scenario_type; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".scenario_type IS 'Broad classification of this scenario. projection: general what-if or forward analysis. budget: governance-approved planning scenario — detail in gd_029_budgets. stress_test: downside or sensitivity scenario. base_case: reference baseline scenario.';
+
+
+--
+-- Name: COLUMN "602_scen_scenarios".scenario_status; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON COLUMN global."602_scen_scenarios".scenario_status IS 'Governance lifecycle status of this scenario. draft → approved → superseded/archived. Validated by fn_is_valid_scenario_status against gd_007_status_registry.';
+
+
+--
+-- Name: gd_001_events_event_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_001_events_event_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_001_events_event_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_001_events_event_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_001_events_event_id_seq OWNED BY global."301_evt_events".event_id;
+
+
+--
+-- Name: gd_001_events_replay_sequence_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."301_evt_events" ALTER COLUMN replay_sequence ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME global.gd_001_events_replay_sequence_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: gd_002_primitive_transitions_primitive_transition_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_002_primitive_transitions_primitive_transition_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_002_primitive_transitions_primitive_transition_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_002_primitive_transitions_primitive_transition_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_002_primitive_transitions_primitive_transition_id_seq OWNED BY global."302_evt_primitive_transitions".primitive_transition_id;
+
+
+--
+-- Name: gd_004_entities_entity_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_004_entities_entity_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_004_entities_entity_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_004_entities_entity_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_004_entities_entity_id_seq OWNED BY global."001_core_entities".entity_id;
+
+
+--
+-- Name: gd_005_ruleset_lines_line_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_005_ruleset_lines_line_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_005_ruleset_lines_line_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_005_ruleset_lines_line_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_005_ruleset_lines_line_id_seq OWNED BY global."203_fin_ruleset_lines".line_id;
+
+
+--
+-- Name: gd_006_commit_records_commit_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_006_commit_records_commit_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_006_commit_records_commit_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_006_commit_records_commit_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_006_commit_records_commit_id_seq OWNED BY global."104_gov_commits".commit_id;
+
+
+--
+-- Name: gd_008_governance_identities_governance_identity_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_008_governance_identities_governance_identity_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_008_governance_identities_governance_identity_id_seq OWNED BY global."101_gov_identities".governance_identity_id;
+
+
+--
+-- Name: gd_011_holidays_holiday_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_011_holidays_holiday_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_011_holidays_holiday_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_011_holidays_holiday_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_011_holidays_holiday_id_seq OWNED BY global."410_cal_holidays".holiday_id;
+
+
+--
+-- Name: gd_012_currency_registry_currency_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_012_currency_registry_currency_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_012_currency_registry_currency_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_012_currency_registry_currency_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_012_currency_registry_currency_id_seq OWNED BY global."403_ref_currencies".currency_id;
+
+
+--
+-- Name: gd_013_people_person_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_013_people_person_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_013_people_person_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_013_people_person_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_013_people_person_id_seq OWNED BY global."002_core_people".person_id;
+
+
+--
+-- Name: gd_014_inflation_rates_inflation_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."402_ref_inflation_rates" ALTER COLUMN inflation_rate_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_014_inflation_rates_inflation_rate_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: gd_015_exchange_rates_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_015_exchange_rates_rate_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_015_exchange_rates_rate_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_015_exchange_rates_rate_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_015_exchange_rates_rate_id_seq OWNED BY global."401_ref_exchange_rates".rate_id;
+
+
+--
+-- Name: gd_017_naming_conventions_naming_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+CREATE SEQUENCE global.gd_017_naming_conventions_naming_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1;
+
+
+ALTER SEQUENCE global.gd_017_naming_conventions_naming_id_seq OWNER TO postgres;
+
+--
+-- Name: gd_017_naming_conventions_naming_id_seq; Type: SEQUENCE OWNED BY; Schema: global; Owner: postgres
+--
+
+ALTER SEQUENCE global.gd_017_naming_conventions_naming_id_seq OWNED BY global."405_ref_names".naming_id;
+
+
+--
+-- Name: gd_020_scenarios_scenario_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."602_scen_scenarios" ALTER COLUMN scenario_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_020_scenarios_scenario_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
+-- Name: gd_021_proposals_proposal_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."102_gov_proposals" ALTER COLUMN proposal_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_021_proposals_proposal_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 
 --
 -- Name: gd_022_delegations_delegation_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
 --
 
-ALTER TABLE global.gd_022_delegations ALTER COLUMN delegation_id ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE global."103_gov_delegations" ALTER COLUMN delegation_id ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME global.gd_022_delegations_delegation_id_seq
     START WITH 1
     INCREMENT BY 1
@@ -1844,144 +2268,10 @@ ALTER TABLE global.gd_022_delegations ALTER COLUMN delegation_id ADD GENERATED B
 
 
 --
--- Name: gd_023_event_types; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_023_event_types (
-    event_type_code text CONSTRAINT gd_023_event_types_code_nn NOT NULL,
-    event_type_name text CONSTRAINT gd_023_event_types_name_nn NOT NULL,
-    description text
-);
-
-
-ALTER TABLE global.gd_023_event_types OWNER TO postgres;
-
---
--- Name: TABLE gd_023_event_types; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_023_event_types IS 'Canonical registry of Event types as defined in Doc 19 §5. Referenced by gd_001_events.event_type. Extending the type set requires only an INSERT — no DDL on gd_001_events.';
-
-
---
--- Name: COLUMN gd_023_event_types.event_type_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_023_event_types.event_type_code IS 'Stable short identifier referenced by gd_001_events.event_type.';
-
-
---
--- Name: COLUMN gd_023_event_types.event_type_name; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_023_event_types.event_type_name IS 'Full canonical name of the Event type per Doc 19.';
-
-
---
--- Name: COLUMN gd_023_event_types.description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_023_event_types.description IS 'Scope of Events belonging to this type and their replay participation semantics.';
-
-
---
--- Name: gd_024_legal_arrangement_types; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_024_legal_arrangement_types (
-    arrangement_type_code text CONSTRAINT gd_024_lat_code_nn NOT NULL,
-    arrangement_type_name text CONSTRAINT gd_024_lat_name_nn NOT NULL,
-    arrangement_category text CONSTRAINT gd_024_lat_category_nn NOT NULL,
-    jurisdiction_code character(2),
-    description text,
-    CONSTRAINT gd_024_lat_category_chk CHECK ((arrangement_category = ANY (ARRAY['employment'::text, 'fop'::text, 'civil_contract'::text, 'secondment'::text, 'management_contract'::text, 'advisory'::text, 'internship'::text])))
-);
-
-
-ALTER TABLE global.gd_024_legal_arrangement_types OWNER TO postgres;
-
---
--- Name: TABLE gd_024_legal_arrangement_types; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_024_legal_arrangement_types IS 'Registry of legal arrangement types governing human engagement. arrangement_category determines financial reconstruction semantics (payroll obligations, tax treatment, social contributions).';
-
-
---
--- Name: COLUMN gd_024_legal_arrangement_types.arrangement_type_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_024_legal_arrangement_types.arrangement_type_code IS 'Stable short identifier referenced by gd_026_teammembers.';
-
-
---
--- Name: COLUMN gd_024_legal_arrangement_types.arrangement_category; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_024_legal_arrangement_types.arrangement_category IS 'Broad category governing financial and governance reconstruction semantics.';
-
-
---
--- Name: COLUMN gd_024_legal_arrangement_types.jurisdiction_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_024_legal_arrangement_types.jurisdiction_code IS 'ISO 3166-1 alpha-2 country code of the governing legal jurisdiction. Null for jurisdiction-agnostic types (secondment, advisory).';
-
-
---
--- Name: gd_025_projects; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_025_projects (
-    project_id bigint CONSTRAINT gd_025_projects_project_id_nn NOT NULL,
-    project_code text CONSTRAINT gd_025_projects_project_code_nn NOT NULL,
-    project_name text CONSTRAINT gd_025_projects_project_name_nn NOT NULL,
-    entity_id bigint,
-    project_owner_id bigint,
-    description text,
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_025_projects_valid_from_nn NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_025_projects_valid_to_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_025_projects_created_at_nn NOT NULL,
-    CONSTRAINT gd_025_projects_temporal_chk CHECK ((valid_from < valid_to))
-);
-
-
-ALTER TABLE global.gd_025_projects OWNER TO postgres;
-
---
--- Name: TABLE gd_025_projects; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_025_projects IS 'Project registry. Each row represents a named organizational project. Referenced by gd_026_teammembers for project allocation tracking.';
-
-
---
--- Name: COLUMN gd_025_projects.project_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_025_projects.project_code IS 'Short stable human-readable code (e.g. ''Astra'', ''Delta'').';
-
-
---
--- Name: COLUMN gd_025_projects.entity_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_025_projects.entity_id IS 'Entity that owns or runs this project. Nullable for cross-entity projects.';
-
-
---
--- Name: COLUMN gd_025_projects.project_owner_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_025_projects.project_owner_id IS 'Person responsible for this project. FK to gd_013_people — ownership is a person-level attribute, not tied to a specific arrangement.';
-
-
---
 -- Name: gd_025_projects_project_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
 --
 
-ALTER TABLE global.gd_025_projects ALTER COLUMN project_id ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE global."003_core_projects" ALTER COLUMN project_id ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME global.gd_025_projects_project_id_seq
     START WITH 1
     INCREMENT BY 1
@@ -1992,117 +2282,11 @@ ALTER TABLE global.gd_025_projects ALTER COLUMN project_id ADD GENERATED BY DEFA
 
 
 --
--- Name: gd_026_teammembers; Type: TABLE; Schema: global; Owner: postgres
+-- Name: gd_026_teammembers_arrangement_id_seq1; Type: SEQUENCE; Schema: global; Owner: postgres
 --
 
-CREATE TABLE global.gd_026_teammembers (
-    arrangement_id bigint CONSTRAINT gd_026_tm_arrangement_id_nn NOT NULL,
-    person_id bigint CONSTRAINT gd_026_tm_person_id_nn NOT NULL,
-    entity_id bigint CONSTRAINT gd_026_tm_entity_id_nn NOT NULL,
-    arrangement_type_code text CONSTRAINT gd_026_tm_type_nn NOT NULL,
-    arrangement_valid_from timestamp with time zone CONSTRAINT gd_026_tm_arr_from_nn NOT NULL,
-    arrangement_valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_026_tm_arr_to_nn NOT NULL,
-    project_id bigint,
-    time_allocation numeric(5,4) DEFAULT 1.0 CONSTRAINT gd_026_tm_time_alloc_nn NOT NULL,
-    project_valid_from timestamp with time zone,
-    project_valid_to timestamp with time zone,
-    pay_currency character(3),
-    pay_unit text,
-    pay_amount numeric(20,6),
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_026_tm_created_at_nn NOT NULL,
-    entity_position_id bigint,
-    project_position_id bigint,
-    CONSTRAINT gd_026_tm_arrangement_temporal_chk CHECK ((arrangement_valid_from < arrangement_valid_to)),
-    CONSTRAINT gd_026_tm_entity_position_class_chk CHECK (global.fn_is_entity_position(entity_position_id)),
-    CONSTRAINT gd_026_tm_pay_amount_chk CHECK (((pay_amount IS NULL) OR (pay_amount >= (0)::numeric))),
-    CONSTRAINT gd_026_tm_pay_unit_chk CHECK ((pay_unit = ANY (ARRAY['hour'::text, 'day'::text, 'month'::text, 'year'::text, 'delivery'::text]))),
-    CONSTRAINT gd_026_tm_payment_consistency_chk CHECK ((((pay_currency IS NULL) AND (pay_unit IS NULL) AND (pay_amount IS NULL)) OR ((pay_currency IS NOT NULL) AND (pay_unit IS NOT NULL) AND (pay_amount IS NOT NULL)))),
-    CONSTRAINT gd_026_tm_project_consistency_chk CHECK ((((project_id IS NULL) AND (project_valid_from IS NULL) AND (project_valid_to IS NULL)) OR ((project_id IS NOT NULL) AND (project_valid_from IS NOT NULL) AND (project_valid_to IS NOT NULL)))),
-    CONSTRAINT gd_026_tm_project_position_class_chk CHECK (global.fn_is_project_position(project_position_id)),
-    CONSTRAINT gd_026_tm_project_within_arrangement_chk CHECK (((project_valid_from IS NULL) OR ((project_valid_from >= arrangement_valid_from) AND (project_valid_to <= arrangement_valid_to) AND (project_valid_from < project_valid_to)))),
-    CONSTRAINT gd_026_tm_time_allocation_chk CHECK (((time_allocation > (0)::numeric) AND (time_allocation <= 1.0)))
-);
-
-
-ALTER TABLE global.gd_026_teammembers OWNER TO postgres;
-
---
--- Name: TABLE gd_026_teammembers; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_026_teammembers IS 'Team member engagement registry. Each row represents one distinct combination of person × entity × legal arrangement type × project × payment terms with its own validity period. Two date ranges: arrangement_valid_from/to (legal contract envelope) and project_valid_from/to (project allocation within that envelope). A person split across two projects has two rows — one per allocation.';
-
-
---
--- Name: COLUMN gd_026_teammembers.arrangement_valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.arrangement_valid_from IS 'Start of the legal arrangement (contract effective date).';
-
-
---
--- Name: COLUMN gd_026_teammembers.arrangement_valid_to; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.arrangement_valid_to IS 'End of the legal arrangement. Defaults to effectively unbounded.';
-
-
---
--- Name: COLUMN gd_026_teammembers.time_allocation; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.time_allocation IS 'Fraction of working time allocated to this project under this arrangement. 1.0000 = full time. 0.5000 = half time. Must be > 0 and <= 1.0.';
-
-
---
--- Name: COLUMN gd_026_teammembers.project_valid_from; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.project_valid_from IS 'Start of project allocation. Must be >= arrangement_valid_from. Null when arrangement exists without project assignment.';
-
-
---
--- Name: COLUMN gd_026_teammembers.project_valid_to; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.project_valid_to IS 'End of project allocation. Must be <= arrangement_valid_to.';
-
-
---
--- Name: COLUMN gd_026_teammembers.pay_unit; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.pay_unit IS 'Unit against which pay_amount is expressed: hour, day, month, year, or delivery (per result/deliverable).';
-
-
---
--- Name: COLUMN gd_026_teammembers.pay_amount; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.pay_amount IS 'Gross amount per pay_unit in pay_currency.';
-
-
---
--- Name: COLUMN gd_026_teammembers.entity_position_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.entity_position_id IS 'Formal position of this person within the legal entity. Must reference a position with class = ''entity_position''. Used in tax reporting, statutory filings, and signing authority. Nullable — not all arrangements require a formal entity position.';
-
-
---
--- Name: COLUMN gd_026_teammembers.project_position_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_026_teammembers.project_position_id IS 'Operational position of this person within the project. Must reference a position with class = ''project_position''. Governs decision authority and role within project delivery scope. Nullable — a person may hold an entity arrangement without project assignment.';
-
-
---
--- Name: gd_026_teammembers_arrangement_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
---
-
-ALTER TABLE global.gd_026_teammembers ALTER COLUMN arrangement_id ADD GENERATED BY DEFAULT AS IDENTITY (
-    SEQUENCE NAME global.gd_026_teammembers_arrangement_id_seq
+ALTER TABLE global."501_hr_arrangements" ALTER COLUMN arrangement_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_026_teammembers_arrangement_id_seq1
     START WITH 1
     INCREMENT BY 1
     NO MINVALUE
@@ -2112,60 +2296,10 @@ ALTER TABLE global.gd_026_teammembers ALTER COLUMN arrangement_id ADD GENERATED 
 
 
 --
--- Name: gd_027_positions; Type: TABLE; Schema: global; Owner: postgres
---
-
-CREATE TABLE global.gd_027_positions (
-    position_id bigint CONSTRAINT gd_027_positions_id_nn NOT NULL,
-    position_class text CONSTRAINT gd_027_positions_class_nn NOT NULL,
-    position_name text CONSTRAINT gd_027_positions_name_nn NOT NULL,
-    position_superior_id bigint,
-    position_description text,
-    valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_027_positions_valid_from_nn NOT NULL,
-    valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_027_positions_valid_to_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_027_positions_created_at_nn NOT NULL,
-    CONSTRAINT gd_027_positions_class_chk CHECK ((position_class = ANY (ARRAY['entity_position'::text, 'project_position'::text]))),
-    CONSTRAINT gd_027_positions_no_self_superior_chk CHECK (((position_superior_id IS NULL) OR (position_superior_id <> position_id))),
-    CONSTRAINT gd_027_positions_temporal_chk CHECK ((valid_from < valid_to))
-);
-
-
-ALTER TABLE global.gd_027_positions OWNER TO postgres;
-
---
--- Name: TABLE gd_027_positions; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON TABLE global.gd_027_positions IS 'Canonical position registry supporting two independent hierarchies: entity_position (formal statutory org structure) and project_position (project delivery structure). Hierarchy enforced within class only — cross-class superior references are prevented by the composite FK on (position_superior_id, position_class). Recursive CTE traversal produces full org/project tree from this table.';
-
-
---
--- Name: COLUMN gd_027_positions.position_class; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_027_positions.position_class IS 'entity_position: formal role within legal entity — appears on statutory filings. project_position: operational role within a project delivery context.';
-
-
---
--- Name: COLUMN gd_027_positions.position_superior_id; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_027_positions.position_superior_id IS 'Immediate superior position within the same class. NULL denotes a root node (top of hierarchy). Composite FK enforces same-class constraint — cross-class reference fails at insert.';
-
-
---
--- Name: COLUMN gd_027_positions.position_description; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global.gd_027_positions.position_description IS 'Scope, responsibilities, and authority boundaries of this position.';
-
-
---
 -- Name: gd_027_positions_position_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
 --
 
-ALTER TABLE global.gd_027_positions ALTER COLUMN position_id ADD GENERATED BY DEFAULT AS IDENTITY (
+ALTER TABLE global."502_hr_positions" ALTER COLUMN position_id ADD GENERATED BY DEFAULT AS IDENTITY (
     SEQUENCE NAME global.gd_027_positions_position_id_seq
     START WITH 1
     INCREMENT BY 1
@@ -2176,248 +2310,485 @@ ALTER TABLE global.gd_027_positions ALTER COLUMN position_id ADD GENERATED BY DE
 
 
 --
--- Name: gd_001_events event_id; Type: DEFAULT; Schema: global; Owner: postgres
+-- Name: gd_029_budgets_budget_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events ALTER COLUMN event_id SET DEFAULT nextval('global.gd_001_events_event_id_seq'::regclass);
-
-
---
--- Name: gd_002_primitive_transitions primitive_transition_id; Type: DEFAULT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_002_primitive_transitions ALTER COLUMN primitive_transition_id SET DEFAULT nextval('global.gd_002_primitive_transitions_primitive_transition_id_seq'::regclass);
-
-
---
--- Name: gd_004_entities entity_id; Type: DEFAULT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_004_entities ALTER COLUMN entity_id SET DEFAULT nextval('global.gd_004_entities_entity_id_seq'::regclass);
+ALTER TABLE global."601_scen_budgets" ALTER COLUMN budget_id ADD GENERATED BY DEFAULT AS IDENTITY (
+    SEQUENCE NAME global.gd_029_budgets_budget_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
 
 
 --
--- Name: gd_005_ruleset_lines line_id; Type: DEFAULT; Schema: global; Owner: postgres
+-- Name: 001_core_entities entity_id; Type: DEFAULT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_005_ruleset_lines ALTER COLUMN line_id SET DEFAULT nextval('global.gd_005_ruleset_lines_line_id_seq'::regclass);
-
-
---
--- Name: gd_006_commit_records commit_id; Type: DEFAULT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_006_commit_records ALTER COLUMN commit_id SET DEFAULT nextval('global.gd_006_commit_records_commit_id_seq'::regclass);
+ALTER TABLE ONLY global."001_core_entities" ALTER COLUMN entity_id SET DEFAULT nextval('global.gd_004_entities_entity_id_seq'::regclass);
 
 
 --
--- Name: gd_008_governance_identities governance_identity_id; Type: DEFAULT; Schema: global; Owner: postgres
+-- Name: 002_core_people person_id; Type: DEFAULT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_008_governance_identities ALTER COLUMN governance_identity_id SET DEFAULT nextval('global.gd_008_governance_identities_governance_identity_id_seq'::regclass);
-
-
---
--- Name: gd_011_holidays holiday_id; Type: DEFAULT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_011_holidays ALTER COLUMN holiday_id SET DEFAULT nextval('global.gd_011_holidays_holiday_id_seq'::regclass);
+ALTER TABLE ONLY global."002_core_people" ALTER COLUMN person_id SET DEFAULT nextval('global.gd_013_people_person_id_seq'::regclass);
 
 
 --
--- Name: gd_012_currency_registry currency_id; Type: DEFAULT; Schema: global; Owner: postgres
+-- Name: 101_gov_identities governance_identity_id; Type: DEFAULT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_012_currency_registry ALTER COLUMN currency_id SET DEFAULT nextval('global.gd_012_currency_registry_currency_id_seq'::regclass);
-
-
---
--- Name: gd_013_people person_id; Type: DEFAULT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_013_people ALTER COLUMN person_id SET DEFAULT nextval('global.gd_013_people_person_id_seq'::regclass);
+ALTER TABLE ONLY global."101_gov_identities" ALTER COLUMN governance_identity_id SET DEFAULT nextval('global.gd_008_governance_identities_governance_identity_id_seq'::regclass);
 
 
 --
--- Name: gd_015_exchange_rates rate_id; Type: DEFAULT; Schema: global; Owner: postgres
+-- Name: 104_gov_commits commit_id; Type: DEFAULT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_015_exchange_rates ALTER COLUMN rate_id SET DEFAULT nextval('global.gd_015_exchange_rates_rate_id_seq'::regclass);
-
-
---
--- Name: gd_017_naming_conventions naming_id; Type: DEFAULT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_017_naming_conventions ALTER COLUMN naming_id SET DEFAULT nextval('global.gd_017_naming_conventions_naming_id_seq'::regclass);
+ALTER TABLE ONLY global."104_gov_commits" ALTER COLUMN commit_id SET DEFAULT nextval('global.gd_006_commit_records_commit_id_seq'::regclass);
 
 
 --
--- Data for Name: gd_001_events; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Name: 203_fin_ruleset_lines line_id; Type: DEFAULT; Schema: global; Owner: postgres
 --
 
-COPY global.gd_001_events (event_id, event_type, source_type, source_ref, valid_time, assertion_time, entity_id, governance_scope_id, commit_id, created_by, created_at, event_description, event_status, corrective_of_event_id, replay_sequence) FROM stdin;
+ALTER TABLE ONLY global."203_fin_ruleset_lines" ALTER COLUMN line_id SET DEFAULT nextval('global.gd_005_ruleset_lines_line_id_seq'::regclass);
+
+
+--
+-- Name: 301_evt_events event_id; Type: DEFAULT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."301_evt_events" ALTER COLUMN event_id SET DEFAULT nextval('global.gd_001_events_event_id_seq'::regclass);
+
+
+--
+-- Name: 302_evt_primitive_transitions primitive_transition_id; Type: DEFAULT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."302_evt_primitive_transitions" ALTER COLUMN primitive_transition_id SET DEFAULT nextval('global.gd_002_primitive_transitions_primitive_transition_id_seq'::regclass);
+
+
+--
+-- Name: 401_ref_exchange_rates rate_id; Type: DEFAULT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."401_ref_exchange_rates" ALTER COLUMN rate_id SET DEFAULT nextval('global.gd_015_exchange_rates_rate_id_seq'::regclass);
+
+
+--
+-- Name: 403_ref_currencies currency_id; Type: DEFAULT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."403_ref_currencies" ALTER COLUMN currency_id SET DEFAULT nextval('global.gd_012_currency_registry_currency_id_seq'::regclass);
+
+
+--
+-- Name: 405_ref_names naming_id; Type: DEFAULT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."405_ref_names" ALTER COLUMN naming_id SET DEFAULT nextval('global.gd_017_naming_conventions_naming_id_seq'::regclass);
+
+
+--
+-- Name: 410_cal_holidays holiday_id; Type: DEFAULT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."410_cal_holidays" ALTER COLUMN holiday_id SET DEFAULT nextval('global.gd_011_holidays_holiday_id_seq'::regclass);
+
+
+--
+-- Data for Name: 001_core_entities; Type: TABLE DATA; Schema: global; Owner: postgres
+--
+
+COPY global."001_core_entities" (entity_id, entity_reg_number, country_code, legal_name, normalized_name, tax_id, vat_id, legal_address, valid_from, valid_to, created_by, created_at) FROM stdin;
+1	UA-12345678	UA	TOV Alpha	tov alpha	12345678	UA123456789012	01001, Ukraine, Kyiv, Khreshchatyk Street 1	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
+2	LT-123456789	LT	UAB Beta	uab beta	123456789	LT123456789	Gedimino pr. 1, LT-01103 Vilnius, Lithuania	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
+3	PL-0000123456	PL	Gamma Sp. z o.o.	gamma sp z o o	1234567890	PL1234567890	ul. Marszalkowska 1, 00-001 Warszawa, Poland	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
 \.
 
 
 --
--- Data for Name: gd_002_primitive_transitions; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 002_core_people; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_002_primitive_transitions (primitive_transition_id, event_id, entity_id, account_code, transformation_direction, amount, currency_code, valid_time, assertion_time, created_by, created_at, transition_description, primitive_transition_type) FROM stdin;
+COPY global."002_core_people" (person_id, person_code, first_name, middle_name, last_name, tax_id, date_of_birth, country_code, created_by, created_at) FROM stdin;
+1	P010001	Andriy	L	Pylypenko	320491093	1984-05-26	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+2	P123103	Lukas	Andrej	Petraitis	LT483920174	1987-03-14	LT	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+3	P304294	Marta	Elena	Kovalenko	UA927154803	1992-11-02	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+4	P420001	Tomas	Jiri	Novak	CZ615840293	1979-07-21	CZ	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+5	P460001	Sofia	Marie	Lindholm	SE384729165	1995-01-30	SE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+6	P359001	Ivan	Petrov	Sokolov	BG508317624	1984-09-18	BG	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+7	P480001	Anna	Katarzyna	Zielinska	PL764210985	1990-06-11	PL	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+8	P450001	Erik	Johan	Hansen	DK390518274	1976-12-05	DK	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+9	P380001	Olena	Mykhailivna	Bondarenko	UA118640572	1988-04-27	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+10	P421001	David	Marek	Horvath	SK905723184	1993-10-16	SK	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+11	P358001	Laura	Ingrid	Nieminen	FI247819536	1981-02-09	FI	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+12	P380002	Petro	Ivanovych	Melnyk	UA672901458	1974-08-25	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+13	P480002	Emilia	Teresa	Nowak	PL153487620	1998-05-03	PL	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+14	P490001	Karl	Friedrich	Bauer	DE482761905	1985-11-14	DE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+15	P372001	Natalia	Sergeyevna	Orlova	EE817263540	1991-01-19	EE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+16	P385001	Marko	Ante	Kovacic	HR360915742	1980-07-08	HR	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+17	P407001	Elena	Ioana	Popescu	RO274150983	1996-09-22	RO	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+18	P370001	Jonas	Petras	Kazlauskas	LT591742836	1983-03-31	LT	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+19	P359002	Vera	Milena	Dimitrova	BG845390217	1978-12-17	BG	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+20	P407002	Mihai	Alexandru	Ionescu	RO713629458	1989-06-28	RO	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+21	P372002	Kristina	Anne	Saar	EE294718650	1994-10-07	EE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+22	P506695	Mantas	Jonas	Kazlauskas	LT38907151234	1989-07-15	LT	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
+23	P209345	Gabija	Rūta	Jankauskaite	LT49503184567	1995-03-18	LT	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
+24	P399405	Tomas	Antanas	Petrauskas	LT38211239876	1982-11-23	LT	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
+25	P309409	Ieva	Lina	Vaitkutė	LT6010521349	1991-05-21	LT	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+26	P329949	Lukas	Darius	Žemaitis	LT3910902765	1991-09-02	LT	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+27	P299304	Oleksandr	Ivanovych	Shevchenko	UA2910415236	1991-04-15	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+28	P487598	Iryna	Petrovna	Kovalchuk	UA2961127845	1996-11-27	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+29	P219839	Dmytro	Mykolayovych	Bondarenko	UA2880721364	1988-07-21	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+30	P393420	Tetiana	Serhiivna	Melnyk	UA3020319457	2002-03-19	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+31	P597698	Andrii	Olehovych	Tkachenko	UA2940906581	1994-09-06	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+32	P304902	Yuliia	Andriivna	Savchenko	UA2990512743	1999-05-12	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+33	P293190	Maksym	Volodymyrovych	Hrytsenko	UA2930826415	1993-08-26	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+34	P239012	Anastasiia	Oleksiivna	Marchenko	UA3011209584	2001-12-09	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+35	P124902	Viktor	Stepanovych	Kravchenko	UA2860417352	1986-04-17	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+36	P498394	Sofiia	Mykhailivna	Lysenko	UA3040218467	2004-02-18	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+37	P574875	Artem	Serhiiovych	Polishchuk	UA2951013628	1995-10-13	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+38	P289423	Nataliia	Ivanivna	Romaniuk	UA2900705241	1990-07-05	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+39	P249023	Bohdan	Petrovych	Taran	UA2970314896	1997-03-14	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+40	P567482	Kateryna	Romanivna	Zadorozhna	UA3000912754	2000-09-12	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+41	P327482	Yaroslav	Dmytrovych	Klymenko	UA2920618347	1992-06-18	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
 \.
 
 
 --
--- Data for Name: gd_003_ruleset_registry; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 003_core_projects; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_003_ruleset_registry (ruleset_id, ruleset_name, ruleset_type, ruleset_description, valid_from, valid_to, governance_scope_id, created_by, created_at) FROM stdin;
+COPY global."003_core_projects" (project_id, project_code, project_name, project_owner_arrangement_id, description, valid_from, valid_to, created_by, created_at) FROM stdin;
+1	PR0001	Heavy Delivery System	\N	Project aimed at creation of load delivery vehicle of large size.	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:17:04.063227+03
+2	PR0002	Light Delivery System	\N	Project aimed at creation of load delivery vehicle of small size.	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:17:04.063227+03
+3	PR0003	Garden Control Device	\N	Project aimed at creation of garden protection device.	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:17:04.063227+03
 \.
 
 
 --
--- Data for Name: gd_004_entities; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 101_gov_identities; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_004_entities (entity_id, entity_reg_number, country_code, legal_name, normalized_name, tax_id, vat_id, legal_address, valid_from, valid_to, created_by, created_at) FROM stdin;
+COPY global."101_gov_identities" (governance_identity_id, identity_type, identity_name, identity_code, valid_from, valid_to, identity_status, created_by, created_at, identity_description, created_by_identity_id, person_id) FROM stdin;
+4	human_controller	Andriy Pylypenko	P010001	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	SYSTEM_BOOTSTRAP	2026-05-25 08:00:18.875129+03	Genesis Human Controller. Organizational trust anchor.	\N	1
+5	human_controller	Lukas Petraitis	P123103	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	SYSTEM_BOOTSTRAP	2026-05-25 08:00:18.875129+03	Chief Operating Officer.	4	2
+6	human_controller	Marta Kovalenko	P304294	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	SYSTEM_BOOTSTRAP	2026-05-25 08:00:18.875129+03	Financial Controller and Accountant.	4	3
 \.
 
 
 --
--- Data for Name: gd_005_ruleset_lines; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 102_gov_proposals; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_005_ruleset_lines (line_id, ruleset_id, entity_1_id, entity_2_id, trf_direction, amount, valid_from, valid_to, created_by, created_at, line_description, account_code) FROM stdin;
+COPY global."102_gov_proposals" (proposal_id, proposal_type, proposal_status, source_type, source_ref, entity_id, scenario_id, proposal_description, proposal_payload, generated_by, reviewed_by, reviewed_at, review_notes, superseded_by, created_at) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_006_commit_records; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 103_gov_delegations; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_006_commit_records (commit_id, commit_timestamp, committing_authority_id, commit_type, commit_reason, created_by, created_at, commit_status) FROM stdin;
+COPY global."103_gov_delegations" (delegation_id, delegator_id, delegatee_id, delegation_scope, entity_id, valid_from, valid_to, revoked_at, revoked_by, delegation_description, created_by, created_at) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_007_status_registry; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 104_gov_commits; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_007_status_registry (status_code, status_name, status_description, is_authoritative_replay_eligible, is_terminal, created_at, status_type) FROM stdin;
-draft	Draft	Preliminary non-authoritative Event under preparation.	f	f	2026-05-21 18:03:26.861324+03	event_status
-proposed	Proposed	Governance-reviewable Event awaiting authoritative acceptance.	f	f	2026-05-21 18:03:26.861324+03	event_status
-committed	Committed	Authoritatively accepted Event participating in replay reconstruction.	t	f	2026-05-21 18:03:26.861324+03	event_status
-superseded	Superseded	Historically preserved Event with applicability superseded by later authoritative structures.	t	t	2026-05-21 18:03:26.861324+03	event_status
-rejected	Rejected	Rejected Event preserved for governance traceability but excluded from authoritative replay.	f	t	2026-05-21 18:03:26.861324+03	event_status
-archived	Archived	Inactive preserved Event retained for historical and governance reconstruction purposes.	f	t	2026-05-21 18:03:26.861324+03	event_status
-pending	Pending	Commit initiated and in progress. Not yet governance-finalized. Excluded from authoritative replay until accepted.	f	f	2026-05-24 11:38:54.29797+03	commit_status
-committed	Committed	Governance-recognized. Accepted into authoritative basis. Participates in deterministic replay reconstruction.	t	f	2026-05-24 11:38:54.29797+03	commit_status
-failed	Failed	Commit attempt did not complete successfully. Retained for governance traceability. Excluded from authoritative replay.	f	t	2026-05-24 11:38:54.29797+03	commit_status
-superseded	Superseded	Superseded by a subsequent corrective commit. Historically preserved and replay-visible for reconstruction of correction chain. Terminal — no further transitions expected.	t	t	2026-05-24 11:38:54.29797+03	commit_status
+COPY global."104_gov_commits" (commit_id, commit_timestamp, committing_authority_id, commit_type, commit_reason, created_by, created_at, commit_status) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_008_governance_identities; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 201_fin_coa; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_008_governance_identities (governance_identity_id, identity_type, identity_name, identity_code, valid_from, valid_to, identity_status, created_by, created_at, identity_description) FROM stdin;
+COPY global."201_fin_coa" (account_code, parent_account_code, valid_from, valid_to, created_by, created_at, account_type, account_name) FROM stdin;
+acc_BS	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Balance Sheet
+acc_PL	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Profit and Loss
+acc_1	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Non-current Assets
+acc_2	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current Assets
+acc_3	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Equity
+acc_4	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Non-current Liabilities
+acc_5	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current Liabilities
+acc_6	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Revenue
+acc_7	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cost of Sales and Direct Costs
+acc_8	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Operating Expenses
+acc_9	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Financial Results, Tax and Closing
+acc_10	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Intangible Assets
+acc_11	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Property, Plant and Equipment
+acc_12	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investment Property
+acc_13	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term Financial Assets
+acc_14	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred Tax and Other Non-current Assets
+acc_20	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Inventory
+acc_21	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade and Other Receivables
+acc_22	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term Financial Assets
+acc_23	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Cash and Cash Equivalents
+acc_24	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepayments and Other Current Assets
+acc_30	acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Share Capital and Contributions
+acc_31	acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Reserves
+acc_32	acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Retained Earnings
+acc_40	acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term Borrowings
+acc_41	acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provisions and Employee Benefits
+acc_42	acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred Tax and Other Non-current Liabilities
+acc_50	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade and Other Payables
+acc_51	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term Borrowings
+acc_52	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Contract Liabilities and Deferred Revenue
+acc_53	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current Provisions
+acc_60	acc_6	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Operating Revenue
+acc_61	acc_6	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Other Operating Income
+acc_70	acc_7	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cost of Goods Sold
+acc_71	acc_7	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Direct Service Costs
+acc_80	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Sales and Marketing Expenses
+acc_81	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	General and Administrative Expenses
+acc_82	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Research and Development
+acc_83	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation and Amortization
+acc_90	acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Finance Income and Costs
+acc_91	acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Income Tax
+acc_99	acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Closing and Control Accounts
+acc_1000	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Capitalized formation expenses
+acc_1010	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Capitalized development costs
+acc_1020	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Software
+acc_1030	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	ERP systems
+acc_1040	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Licenses and patents
+acc_1050	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trademarks
+acc_1060	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Customer relationships
+acc_1070	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Goodwill
+acc_1080	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other intangible assets
+acc_1090	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accumulated amortization — intangible assets
+acc_1100	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Land
+acc_1110	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Buildings
+acc_1120	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Leasehold improvements
+acc_1130	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Machinery and equipment
+acc_1140	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Vehicles
+acc_1150	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Furniture and fixtures
+acc_1160	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	IT equipment
+acc_1170	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Construction in progress
+acc_1180	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Right-of-use assets
+acc_1190	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accumulated depreciation — PPE
+acc_1200	acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investment property at cost
+acc_1210	acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Fair value adjustments — investment property
+acc_1220	acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accumulated depreciation — investment property
+acc_1300	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term loans issued
+acc_1310	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bonds held
+acc_1320	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Equity investments
+acc_1330	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investments at FVOCI
+acc_1340	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investments at FVTPL
+acc_1350	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Security deposits
+acc_1360	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Derivative financial assets
+acc_1370	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred consideration receivable
+acc_1380	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Expected credit loss reserve
+acc_1400	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred tax assets
+acc_1410	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term prepaid expenses
+acc_1420	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Pension surplus assets
+acc_1430	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other non-current assets
+acc_2000	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Raw materials
+acc_2010	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Work in progress
+acc_2020	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Finished goods
+acc_2030	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Merchandise inventory
+acc_2040	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Spare parts
+acc_2050	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Inventory in transit
+acc_2060	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Inventory write-down reserve
+acc_2100	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade receivables
+acc_2110	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Allowance for doubtful accounts
+acc_2120	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Contract assets
+acc_2130	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Employee receivables
+acc_2140	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	VAT receivable
+acc_2150	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Tax receivable
+acc_2160	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Advances to suppliers
+acc_2170	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accrued income
+acc_2180	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other receivables
+acc_2200	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term investments
+acc_2210	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Marketable securities
+acc_2220	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Derivative assets — current
+acc_2230	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current portion of long-term loans receivable
+acc_2300	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Cash on hand
+acc_2310	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Main operating bank account
+acc_2320	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Payroll bank account
+acc_2330	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Restricted cash
+acc_2340	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Foreign currency bank accounts
+acc_2350	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Petty cash
+acc_2360	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Cash equivalents
+acc_2370	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Clearing accounts
+acc_2400	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepaid insurance
+acc_2410	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepaid rent
+acc_2420	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepaid software subscriptions
+acc_2430	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term deferred costs
+acc_2440	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other current assets
+acc_3000	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Share capital
+acc_3010	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Share premium
+acc_3020	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Additional paid-in capital
+acc_3030	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Treasury shares
+acc_3040	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Owner contributions
+acc_3100	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Legal reserve
+acc_3110	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Revaluation reserve
+acc_3120	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Foreign currency translation reserve
+acc_3130	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	FVOCI reserve
+acc_3140	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Hedging reserve
+acc_3150	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other reserves
+acc_3200	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Retained earnings — prior years
+acc_3210	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current year profit/loss
+acc_3220	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Dividends declared
+acc_3230	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prior period adjustments
+acc_4000	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term bank loans
+acc_4010	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bonds payable
+acc_4020	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Lease liabilities — non-current
+acc_4030	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Shareholder loans
+acc_4040	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Convertible debt
+acc_4050	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred consideration payable
+acc_4100	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provision for warranties
+acc_4110	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provision for litigation
+acc_4120	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provision for environmental obligations
+acc_4130	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Asset retirement obligations
+acc_4140	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Pension liabilities
+acc_4150	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-service employee benefits
+acc_4200	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred tax liabilities
+acc_4210	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred revenue — non-current
+acc_4220	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term accruals
+acc_4230	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other non-current liabilities
+acc_5000	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade payables
+acc_5010	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accrued expenses
+acc_5020	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Payroll payable
+acc_5030	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Social security payable
+acc_5040	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	VAT payable
+acc_5050	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Corporate income tax payable
+acc_5060	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Withholding tax payable
+acc_5070	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Employee reimbursements payable
+acc_5080	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other taxes payable
+acc_5090	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other payables
+acc_5100	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term bank loans
+acc_5110	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current portion of long-term debt
+acc_5120	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Lease liabilities — current
+acc_5130	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Interest payable
+acc_5140	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bank overdrafts
+acc_5200	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Contract liabilities
+acc_5210	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred subscription revenue
+acc_5220	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Customer advances
+acc_5230	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Unearned revenue
+acc_5300	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term warranty provision
+acc_5310	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Restructuring provision
+acc_5320	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bonus provision
+acc_5330	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Vacation accrual
+acc_5340	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other current provisions
+acc_6000	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Product sales revenue
+acc_6010	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Service revenue
+acc_6020	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Subscription revenue
+acc_6030	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Maintenance revenue
+acc_6040	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Commission revenue
+acc_6050	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Licensing revenue
+acc_6060	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Construction contract revenue
+acc_6070	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Revenue adjustments
+acc_6080	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Discounts and rebates
+acc_6100	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Rental income
+acc_6110	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Government grants
+acc_6120	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Gain on disposal of assets
+acc_6130	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Insurance recoveries
+acc_6140	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Foreign exchange gains
+acc_6150	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Fair value gains
+acc_6160	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Miscellaneous operating income
+acc_7000	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Raw material consumption
+acc_7010	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Direct labor
+acc_7020	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Manufacturing overhead
+acc_7030	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Inventory write-downs
+acc_7040	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Freight and import duties
+acc_7050	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cost of merchandise sold
+acc_7060	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Production variances
+acc_7100	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Subcontractor costs
+acc_7110	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Project labor costs
+acc_7120	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cloud infrastructure costs
+acc_7130	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Direct software licensing costs
+acc_7140	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Hosting costs
+acc_7150	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Customer support delivery costs
+acc_8000	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Advertising expense
+acc_8010	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Marketing campaigns
+acc_8020	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Sales commissions
+acc_8030	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Travel and entertainment
+acc_8040	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Trade show expenses
+acc_8050	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Customer acquisition costs
+acc_8100	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Salaries and wages
+acc_8110	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Payroll taxes
+acc_8120	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Office rent
+acc_8130	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Utilities
+acc_8140	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Legal fees
+acc_8150	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Audit fees
+acc_8160	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Consulting fees
+acc_8170	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	IT expenses
+acc_8180	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Insurance expense
+acc_8190	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Office supplies
+acc_8200	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Research expenses
+acc_8210	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Prototype development
+acc_8220	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Engineering salaries
+acc_8230	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Laboratory expenses
+acc_8240	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Testing and certification
+acc_8300	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — buildings
+acc_8310	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — machinery
+acc_8320	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — vehicles
+acc_8330	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Amortization — software
+acc_8340	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Amortization — licenses
+acc_8350	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — right-of-use assets
+acc_9000	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Interest income
+acc_9010	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Dividend income
+acc_9020	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Interest expense
+acc_9030	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Lease interest expense
+acc_9040	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Foreign exchange losses
+acc_9050	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Fair value losses
+acc_9060	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Bank charges
+acc_9100	acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Current income tax expense
+acc_9110	acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Deferred tax expense
+acc_9120	acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Prior year tax adjustments
+acc_9900	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Period closing account
+acc_9910	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Suspense account
+acc_9920	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Intercompany clearing
+acc_9930	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	FX revaluation clearing
+acc_9940	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Consolidation adjustments
+acc_9950	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Elimination entries
 \.
 
 
 --
--- Data for Name: gd_011_holidays; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 202_fin_rulesets; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_011_holidays (holiday_id, country_code, holiday_name, holiday_type, holiday_date, created_by, created_at) FROM stdin;
+COPY global."202_fin_rulesets" (ruleset_id, ruleset_name, ruleset_type, ruleset_description, valid_from, valid_to, governance_scope_id, created_by, created_at) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_012_currency_registry; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 203_fin_ruleset_lines; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_012_currency_registry (currency_id, currency_name, iso_alpha_2, iso_alpha_3, currency_symbol, issuing_jurisdiction, valid_from, valid_to, created_by, created_at) FROM stdin;
-1	Euro	\N	EUR	€	European Central Bank — Euro Area	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-2	United States Dollar	US	USD	$	United States of America — Federal Reserve	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-3	Ukrainian Hryvnia	UA	UAH	₴	Ukraine — National Bank of Ukraine	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-4	Polish Zloty	PL	PLN	zł	Republic of Poland — Narodowy Bank Polski	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-5	Pound Sterling	GB	GBP	£	United Kingdom — Bank of England	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
+COPY global."203_fin_ruleset_lines" (line_id, ruleset_id, entity_1_id, entity_2_id, trf_direction, amount, valid_from, valid_to, created_by, created_at, line_description, account_code) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_013_people; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 301_evt_events; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_013_people (person_id, person_code, first_name, middle_name, last_name, tax_id, date_of_birth, country_code, valid_from, valid_to, created_by, created_at) FROM stdin;
-1	P-0001	Andriy	Mykolaiovych	Kovalenko	UA100000001	1984-03-12	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-2	P-0002	Olena	Serhiivna	Marchenko	UA100000002	1990-07-21	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-3	P-0003	Taras	Ivanovych	Bondar	UA100000003	1988-11-05	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-4	P-0004	Iryna	Petrovna	Shevchuk	UA100000004	1992-01-17	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-5	P-0005	Maksym	Oleksandrovych	Tkachenko	UA100000005	1981-06-30	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-6	P-0006	Nataliia	Volodymyrivna	Danylenko	UA100000006	1987-09-14	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-7	P-0007	Roman	Yuriiovych	Melnyk	UA100000007	1995-02-11	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-8	P-0008	Svitlana	Andriivna	Kravets	UA100000008	1983-12-08	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-9	P-0009	Dmytro	Olehovych	Lysenko	UA100000009	1991-05-19	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-10	P-0010	Kateryna	Mykhailivna	Savchenko	UA100000010	1986-10-03	UA	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-11	P-0011	John	Michael	Anderson	US100000011	1979-04-27	US	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-12	P-0012	Emily	Grace	Walker	US100000012	1993-08-09	US	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-13	P-0013	Thomas	Edward	Miller	US100000013	1985-02-24	US	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-14	P-0014	Anna	Maria	Nowak	PL100000014	1990-06-12	PL	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-15	P-0015	Piotr	Jan	Kowalski	PL100000015	1982-09-18	PL	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-16	P-0016	James	Robert	Campbell	GB100000016	1975-01-29	GB	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-17	P-0017	Sophie	Elizabeth	Turner	GB100000017	1994-03-07	GB	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-18	P-0018	Hans	Peter	Muller	DE100000018	1980-11-16	DE	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-19	P-0019	Claire	Marie	Dubois	FR100000019	1989-07-02	FR	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
-20	P-0020	Marco	Antonio	Rossi	IT100000020	1987-05-25	IT	2020-01-01 00:00:00+02	3001-12-31 00:00:00+02	system	2026-05-24 15:18:20.860826+03
+COPY global."301_evt_events" (event_id, event_type, source_type, source_ref, valid_time, assertion_time, entity_id, governance_scope_id, commit_id, created_by, created_at, event_description, event_status, corrective_of_event_id, replay_sequence) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_014_inflation_rates; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 302_evt_primitive_transitions; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_014_inflation_rates (inflation_rate_id, applicable_year, currency_code, inflation_rate, created_by, created_at, rate_reference) FROM stdin;
-31	2020	USD	1.230000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-32	2021	USD	4.700000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-33	2022	USD	8.000000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-34	2023	USD	4.120000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-35	2024	USD	2.900000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-36	2025	USD	2.600000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-37	2020	EUR	0.250000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-38	2021	EUR	2.490000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-39	2022	EUR	8.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-40	2023	EUR	5.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-41	2024	EUR	2.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-42	2025	EUR	2.300000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-43	2020	UAH	2.730000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-44	2021	UAH	9.360000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-45	2022	UAH	20.180000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-46	2023	UAH	12.850000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-47	2024	UAH	6.500000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-48	2025	UAH	12.730000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-49	2020	PLN	3.370000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-50	2021	PLN	5.060000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-51	2022	PLN	14.430000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-52	2023	PLN	11.530000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-53	2024	PLN	3.780000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-54	2025	PLN	4.300000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-55	2020	GBP	0.990000	system	2026-05-24 14:53:41.754309+03	rate_bons
-56	2021	GBP	2.520000	system	2026-05-24 14:53:41.754309+03	rate_bons
-57	2022	GBP	7.920000	system	2026-05-24 14:53:41.754309+03	rate_bons
-58	2023	GBP	6.790000	system	2026-05-24 14:53:41.754309+03	rate_bons
-59	2024	GBP	2.500000	system	2026-05-24 14:53:41.754309+03	rate_bons
-60	2025	GBP	3.200000	system	2026-05-24 14:53:41.754309+03	rate_bons
+COPY global."302_evt_primitive_transitions" (primitive_transition_id, event_id, entity_id, account_code, transformation_direction, amount, currency_code, valid_time, assertion_time, created_by, created_at, transition_description, primitive_transition_type) FROM stdin;
 \.
 
 
 --
--- Data for Name: gd_015_exchange_rates; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 401_ref_exchange_rates; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_015_exchange_rates (rate_id, rate_timestamp, base_currency, quote_currency, exchange_rate, rate_code) FROM stdin;
+COPY global."401_ref_exchange_rates" (rate_id, rate_timestamp, base_currency, quote_currency, exchange_rate, rate_code) FROM stdin;
 20578	2021-03-27 02:00:00+02	EUR	USD	0.848285	rate_comp
 20579	2021-03-28 02:00:00+02	EUR	USD	0.848285	rate_comp
 20580	2021-04-03 03:00:00+03	EUR	USD	0.848432	rate_comp
@@ -18803,26 +19174,61 @@ COPY global.gd_015_exchange_rates (rate_id, rate_timestamp, base_currency, quote
 
 
 --
--- Data for Name: gd_016_coa; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 402_ref_inflation_rates; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_016_coa (account_code, ruleset_id, parent_account_code, account_name, valid_from, valid_to, created_by, created_at) FROM stdin;
+COPY global."402_ref_inflation_rates" (inflation_rate_id, applicable_year, currency_code, inflation_rate, created_by, created_at, rate_reference) FROM stdin;
+31	2020	USD	1.230000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
+32	2021	USD	4.700000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
+33	2022	USD	8.000000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
+34	2023	USD	4.120000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
+35	2024	USD	2.900000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
+36	2025	USD	2.600000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
+37	2020	EUR	0.250000	system	2026-05-24 14:53:41.754309+03	rate_hicp
+38	2021	EUR	2.490000	system	2026-05-24 14:53:41.754309+03	rate_hicp
+39	2022	EUR	8.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
+40	2023	EUR	5.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
+41	2024	EUR	2.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
+42	2025	EUR	2.300000	system	2026-05-24 14:53:41.754309+03	rate_hicp
+43	2020	UAH	2.730000	system	2026-05-24 14:53:41.754309+03	rate_sssu
+44	2021	UAH	9.360000	system	2026-05-24 14:53:41.754309+03	rate_sssu
+45	2022	UAH	20.180000	system	2026-05-24 14:53:41.754309+03	rate_sssu
+46	2023	UAH	12.850000	system	2026-05-24 14:53:41.754309+03	rate_sssu
+47	2024	UAH	6.500000	system	2026-05-24 14:53:41.754309+03	rate_sssu
+48	2025	UAH	12.730000	system	2026-05-24 14:53:41.754309+03	rate_sssu
+49	2020	PLN	3.370000	system	2026-05-24 14:53:41.754309+03	rate_gusp
+50	2021	PLN	5.060000	system	2026-05-24 14:53:41.754309+03	rate_gusp
+51	2022	PLN	14.430000	system	2026-05-24 14:53:41.754309+03	rate_gusp
+52	2023	PLN	11.530000	system	2026-05-24 14:53:41.754309+03	rate_gusp
+53	2024	PLN	3.780000	system	2026-05-24 14:53:41.754309+03	rate_gusp
+54	2025	PLN	4.300000	system	2026-05-24 14:53:41.754309+03	rate_gusp
+55	2020	GBP	0.990000	system	2026-05-24 14:53:41.754309+03	rate_bons
+56	2021	GBP	2.520000	system	2026-05-24 14:53:41.754309+03	rate_bons
+57	2022	GBP	7.920000	system	2026-05-24 14:53:41.754309+03	rate_bons
+58	2023	GBP	6.790000	system	2026-05-24 14:53:41.754309+03	rate_bons
+59	2024	GBP	2.500000	system	2026-05-24 14:53:41.754309+03	rate_bons
+60	2025	GBP	3.200000	system	2026-05-24 14:53:41.754309+03	rate_bons
 \.
 
 
 --
--- Data for Name: gd_017_naming_conventions; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 403_ref_currencies; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_017_naming_conventions (naming_id, object_type, object_ref, canonical_name, translation_language, translated_name, translation_context, created_by, created_at) FROM stdin;
+COPY global."403_ref_currencies" (currency_id, currency_name, iso_alpha_2, iso_alpha_3, currency_symbol, issuing_jurisdiction, valid_from, valid_to, created_by, created_at) FROM stdin;
+1	Euro	\N	EUR	€	European Central Bank — Euro Area	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
+2	United States Dollar	US	USD	$	United States of America — Federal Reserve	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
+3	Ukrainian Hryvnia	UA	UAH	₴	Ukraine — National Bank of Ukraine	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
+4	Polish Zloty	PL	PLN	zł	Republic of Poland — Narodowy Bank Polski	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
+5	Pound Sterling	GB	GBP	£	United Kingdom — Bank of England	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
 \.
 
 
 --
--- Data for Name: gd_018_rate_codes; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 404_ref_rate_sources; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_018_rate_codes (rate_code, rate_name, rate_type, provider, description) FROM stdin;
+COPY global."404_ref_rate_sources" (rate_code, rate_name, rate_type, provider, description) FROM stdin;
 rate_bol	Bank of Lithuania EUR reference rates	exchange	BOL	EUR-based reference rates published by Bank of Lithuania
 rate_ecb	European Central Bank reference rates	exchange	ECB	ECB daily foreign exchange reference rates
 rate_nbu	National Bank of Ukraine official rates	exchange	NBU	Official hryvnia exchange rates published by NBU
@@ -18840,10 +19246,18 @@ rate_bons	CPI — UK	inflation	UK Office for National Statistics
 
 
 --
--- Data for Name: gd_019_pt_types; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 405_ref_names; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_019_pt_types (pt_type_code, pt_type_name, description) FROM stdin;
+COPY global."405_ref_names" (naming_id, object_type, object_ref, canonical_name, translation_language, translated_name, translation_context, created_by, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: 406_ref_pt_types; Type: TABLE DATA; Schema: global; Owner: postgres
+--
+
+COPY global."406_ref_pt_types" (pt_type_code, pt_type_name, description) FROM stdin;
 accounting	Accounting Primitive Transition	Authoritative financial organizational mutation. Participates directly in accounting replay reconstruction. Covers debit structures, credit structures, balance-affecting mutations, obligation structures, and settlement structures.
 governance	Governance Primitive Transition	Authoritative governance organizational mutation. Participates in governance reconstruction semantics. Covers authorization issuance, delegation issuance, delegation revocation, escalation assignment, and governance override structures.
 disclosure	Disclosure Primitive Transition	Authoritative disclosure-related organizational mutation. Participates in disclosure reconstruction semantics. Covers disclosure authorization, issuance, revocation, recipient authorization structures, and disclosure perimeter changes.
@@ -18853,34 +19267,32 @@ operational	Operational Primitive Transition	Authoritative operational organizat
 
 
 --
--- Data for Name: gd_020_scenarios; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 407_ref_statuses; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_020_scenarios (scenario_id, scenario_name, scenario_description, base_date, created_by, created_at) FROM stdin;
+COPY global."407_ref_statuses" (status_code, status_name, status_description, is_authoritative_replay_eligible, is_terminal, created_at, status_type) FROM stdin;
+draft	Draft	Preliminary non-authoritative Event under preparation.	f	f	2026-05-21 18:03:26.861324+03	event_status
+proposed	Proposed	Governance-reviewable Event awaiting authoritative acceptance.	f	f	2026-05-21 18:03:26.861324+03	event_status
+committed	Committed	Authoritatively accepted Event participating in replay reconstruction.	t	f	2026-05-21 18:03:26.861324+03	event_status
+superseded	Superseded	Historically preserved Event with applicability superseded by later authoritative structures.	t	t	2026-05-21 18:03:26.861324+03	event_status
+rejected	Rejected	Rejected Event preserved for governance traceability but excluded from authoritative replay.	f	t	2026-05-21 18:03:26.861324+03	event_status
+archived	Archived	Inactive preserved Event retained for historical and governance reconstruction purposes.	f	t	2026-05-21 18:03:26.861324+03	event_status
+pending	Pending	Commit initiated and in progress. Not yet governance-finalized. Excluded from authoritative replay until accepted.	f	f	2026-05-24 11:38:54.29797+03	commit_status
+committed	Committed	Governance-recognized. Accepted into authoritative basis. Participates in deterministic replay reconstruction.	t	f	2026-05-24 11:38:54.29797+03	commit_status
+failed	Failed	Commit attempt did not complete successfully. Retained for governance traceability. Excluded from authoritative replay.	f	t	2026-05-24 11:38:54.29797+03	commit_status
+superseded	Superseded	Superseded by a subsequent corrective commit. Historically preserved and replay-visible for reconstruction of correction chain. Terminal — no further transitions expected.	t	t	2026-05-24 11:38:54.29797+03	commit_status
+draft	Draft	Scenario is being constructed. Values are provisional and not yet governance-approved. Excluded from authoritative budget comparison.	f	f	2026-05-24 21:25:33.896266+03	scenario_status
+approved	Approved	Scenario has received governance approval. For budget scenarios, this constitutes the official plan against which actuals are measured. Participates in plan-to-fact reconstruction.	t	f	2026-05-24 21:25:33.896266+03	scenario_status
+superseded	Superseded	Scenario has been replaced by a revised version. Retained for historical reconstructability. Terminal — no further transitions.	f	t	2026-05-24 21:25:33.896266+03	scenario_status
+archived	Archived	Scenario retained for historical reference. No longer active for planning or comparison purposes. Terminal.	f	t	2026-05-24 21:25:33.896266+03	scenario_status
 \.
 
 
 --
--- Data for Name: gd_021_proposals; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 408_ref_event_types; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_021_proposals (proposal_id, proposal_type, proposal_status, source_type, source_ref, entity_id, scenario_id, proposal_description, proposal_payload, generated_by, reviewed_by, reviewed_at, review_notes, superseded_by, created_at) FROM stdin;
-\.
-
-
---
--- Data for Name: gd_022_delegations; Type: TABLE DATA; Schema: global; Owner: postgres
---
-
-COPY global.gd_022_delegations (delegation_id, delegator_id, delegatee_id, delegation_scope, entity_id, valid_from, valid_to, revoked_at, revoked_by, delegation_description, created_by, created_at) FROM stdin;
-\.
-
-
---
--- Data for Name: gd_023_event_types; Type: TABLE DATA; Schema: global; Owner: postgres
---
-
-COPY global.gd_023_event_types (event_type_code, event_type_name, description) FROM stdin;
+COPY global."408_ref_event_types" (event_type_code, event_type_name, description) FROM stdin;
 accounting	Accounting Event	Groups accounting-related Primitive Transitions. Participates directly in accounting replay reconstruction. Covers journal recognition, settlement occurrence, balance-affecting mutation, obligation mutation, and reconciliation mutation.
 governance	Governance Event	Groups governance-related Primitive Transitions. Participates directly in governance reconstruction semantics. Covers authorization issuance, delegation issuance, escalation routing, governance override, and governance review outcome.
 disclosure	Disclosure Event	Groups disclosure-related Primitive Transitions. Participates directly in disclosure reconstruction semantics. Covers disclosure authorization, issuance, revocation, supersession, and recipient authorization changes.
@@ -18892,44 +19304,185 @@ scenario	Scenario Event	Hypothetical Event structure existing only within an iso
 
 
 --
--- Data for Name: gd_024_legal_arrangement_types; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 409_ref_coa_account_types; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_024_legal_arrangement_types (arrangement_type_code, arrangement_type_name, arrangement_category, jurisdiction_code, description) FROM stdin;
+COPY global."409_ref_coa_account_types" (account_type_code, account_type_name, description) FROM stdin;
+income_statement	Income Statement	Revenue, cost, and expense accounts participating in Profit & Loss reconstruction. Closed to retained earnings at period end.
+balance_sheet	Balance Sheet	Asset, liability, and equity accounts participating in Balance Sheet reconstruction. Carry forward across periods.
+cash_flow	Cash Flow	Accounts supporting Cash Flow Statement reconstruction — operating, investing, and financing activity classification.
+statistical	Statistical / Memo	Non-monetary tracking accounts: headcount, production units, KPIs, and other quantitative metrics. Do not affect financial statement totals.
+budget	Budget Planning	Accounts used exclusively for budget planning entries. May shadow income_statement or balance_sheet accounts where the budget topology differs from the financial reporting topology.
+\.
+
+
+--
+-- Data for Name: 410_cal_holidays; Type: TABLE DATA; Schema: global; Owner: postgres
+--
+
+COPY global."410_cal_holidays" (holiday_id, country_code, holiday_name, holiday_type, holiday_date, created_by, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: 410_ref_arrangement_types; Type: TABLE DATA; Schema: global; Owner: postgres
+--
+
+COPY global."410_ref_arrangement_types" (arrangement_type_code, arrangement_type_name, arrangement_category, jurisdiction_code, description) FROM stdin;
 emp_lt	Employment contract — Lithuania	employment	LT	Standard indefinite or fixed-term employment contract under Lithuanian Labour Code (Darbo kodeksas). Generates payroll, Sodra social contributions, and statutory leave obligations.
 emp_ua	Employment contract — Ukraine	employment	UA	Standard employment contract under Ukrainian Labour Code (Кодекс законів про працю). Generates payroll, unified social contribution (ЄСВ), and statutory leave obligations.
 emp_pl	Employment contract — Poland	employment	PL	Umowa o pracę under Polish Labour Code. Generates payroll, ZUS social contributions, and statutory leave obligations.
-fop_ua_3	FOP sole proprietor — Ukraine group 3	fop	UA	Contract with person registered as Ukrainian sole proprietor (ФОП, Фізична особа-підприємець) on simplified taxation group 3. B2B invoice basis — no payroll or ЄСВ obligation from entity side.
-fop_ua_2	FOP sole proprietor — Ukraine group 2	fop	UA	Contract with Ukrainian FOP on simplified taxation group 2. B2B invoice basis — restricted activity types apply.
-fop_pl	Sole proprietor — Poland (JDG)	fop	PL	Contract with person registered as Polish sole proprietor (Jednoosobowa Działalność Gospodarcza). B2B invoice basis.
 civil_ua	Civil law contract — Ukraine	civil_contract	UA	Цивільно-правовий договір (ЦПД) under Ukrainian Civil Code. Service or result agreement. ЄСВ applies on remuneration.
 secondment	Secondment / inter-entity deployment	secondment	\N	Formal deployment of a person from their employing entity to a host entity for a defined period. Intercompany cost recharge typically applies. Employment relationship with original entity preserved.
 advisory	Advisory / board arrangement	advisory	\N	Non-executive advisory, board membership, or consulting arrangement. Paid via fee or honorarium. No employment relationship.
 internship	Internship / apprenticeship	internship	\N	Training or apprenticeship arrangement. May be unpaid or paid at below-market rate. Specific statutory protections apply by jurisdiction.
+fop_ua_3	FOP sole proprietor — Ukraine group 3	private_entrepreneur	UA	Contract with person registered as Ukrainian sole proprietor (ФОП, Фізична особа-підприємець) on simplified taxation group 3. B2B invoice basis — no payroll or ЄСВ obligation from entity side.
+fop_ua_2	FOP sole proprietor — Ukraine group 2	private_entrepreneur	UA	Contract with Ukrainian FOP on simplified taxation group 2. B2B invoice basis — restricted activity types apply.
+fop_pl	Sole proprietor — Poland (JDG)	private_entrepreneur	PL	Contract with person registered as Polish sole proprietor (Jednoosobowa Działalność Gospodarcza). B2B invoice basis.
 \.
 
 
 --
--- Data for Name: gd_025_projects; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 501_hr_arrangements; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_025_projects (project_id, project_code, project_name, entity_id, project_owner_id, description, valid_from, valid_to, created_by, created_at) FROM stdin;
+COPY global."501_hr_arrangements" (arrangement_id, person_id, entity_id, arrangement_type_code, position_id, project_id, valid_from, valid_to, time_allocation, pay_currency, pay_unit, pay_amount, created_by, created_at) FROM stdin;
+9	10	3	emp_pl	35	1	2025-01-01 02:00:00+02	2025-12-11 02:00:00+02	0.5000	EUR	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+10	10	3	emp_pl	35	2	2025-01-01 02:00:00+02	2025-12-11 02:00:00+02	0.5000	EUR	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+11	7	3	emp_pl	35	1	2025-12-12 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+12	7	3	emp_pl	35	2	2025-12-12 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+13	7	3	emp_pl	35	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+14	7	3	emp_pl	35	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+15	7	3	emp_pl	35	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+16	9	1	emp_ua	32	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	0.5000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+17	9	1	emp_ua	32	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	0.5000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+18	9	1	emp_ua	32	1	2025-04-01 03:00:00+03	2025-12-31 02:00:00+02	0.5000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+19	9	1	emp_ua	32	2	2025-04-01 03:00:00+03	2025-12-31 02:00:00+02	0.5000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+20	9	1	emp_ua	32	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+21	9	1	emp_ua	32	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+22	9	1	emp_ua	32	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+23	23	2	emp_lt	34	1	2025-01-01 02:00:00+02	2025-05-31 03:00:00+03	1.0000	EUR	hour	15.500000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+24	23	2	emp_lt	34	1	2025-06-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+25	13	3	emp_pl	36	1	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+26	13	3	emp_pl	36	2	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+27	13	3	emp_pl	36	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+28	13	3	emp_pl	36	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+29	13	3	emp_pl	36	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
+6	2	2	emp_lt	33	\N	2025-01-01 02:00:00+02	2025-01-31 02:00:00+02	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+30	22	2	emp_lt	33	1	2025-02-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:47:27.798628+03
+31	4	2	emp_lt	1	1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	19.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:08:51.098448+03
+32	8	1	civil_ua	13	2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	19.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:08:51.098448+03
+33	12	1	fop_ua_3	25	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	USD	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:08:51.098448+03
+34	11	1	civil_ua	8	1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	USD	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+35	14	1	civil_ua	7	1	2025-01-01 02:00:00+02	2025-07-30 03:00:00+03	1.0000	USD	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+36	15	1	civil_ua	7	1	2025-08-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	hour	17.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+37	16	1	civil_ua	19	2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	10.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+38	20	1	civil_ua	10	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+39	20	1	civil_ua	10	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	day	95.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+40	21	1	fop_ua_3	22	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1600.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+41	21	1	fop_ua_3	22	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	12.500000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+42	3	1	fop_ua_3	3	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1700.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+43	3	1	fop_ua_3	3	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	hour	12.500000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+44	5	1	civil_ua	15	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+45	5	1	civil_ua	15	2	2025-04-01 03:00:00+03	2026-02-01 02:00:00+02	1.0000	EUR	hour	14.375000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+46	6	1	civil_ua	15	2	2026-03-01 02:00:00+02	2026-06-30 03:00:00+03	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+47	6	1	civil_ua	15	2	2026-07-30 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	month	2300.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
+81	27	1	fop_ua_3	2	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1200.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+82	27	1	fop_ua_3	2	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	14.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+83	28	1	fop_ua_3	14	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1400.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+84	28	1	fop_ua_3	14	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	day	96.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+85	29	1	fop_ua_3	28	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	EUR	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+86	29	1	fop_ua_3	28	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	2200.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+87	25	1	civil_ua	9	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+88	25	1	civil_ua	9	1	2025-04-01 03:00:00+03	2025-08-31 03:00:00+03	1.0000	USD	day	77.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+89	25	3	emp_pl	9	1	2025-09-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+90	24	1	fop_ua_3	21	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1600.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+91	24	1	fop_ua_3	21	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	12.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
+92	35	1	fop_ua_3	12	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
+93	35	1	fop_ua_3	12	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	60000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
+94	36	1	fop_ua_3	24	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
+95	36	1	fop_ua_3	24	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	60000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
+96	41	1	fop_ua_3	5	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+97	41	1	fop_ua_3	5	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+98	40	1	fop_ua_3	17	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+99	40	1	fop_ua_3	17	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+100	39	1	fop_ua_3	26	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+101	39	1	fop_ua_3	26	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+102	38	1	fop_ua_3	4	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+103	38	1	fop_ua_3	4	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+104	37	1	fop_ua_3	24	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+105	37	1	fop_ua_3	24	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+106	17	1	civil_ua	30	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+107	17	1	civil_ua	30	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
+1	1	1	emp_ua	37	1	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+2	1	1	emp_ua	38	2	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+3	1	1	emp_ua	37	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+4	1	1	emp_ua	38	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+5	1	1	emp_ua	39	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+7	18	2	emp_lt	2	1	2025-01-01 02:00:00+02	2025-06-30 03:00:00+03	1.0000	EUR	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+8	19	2	emp_lt	2	1	2025-07-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
 \.
 
 
 --
--- Data for Name: gd_026_teammembers; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 502_hr_positions; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_026_teammembers (arrangement_id, person_id, entity_id, arrangement_type_code, arrangement_valid_from, arrangement_valid_to, project_id, time_allocation, project_valid_from, project_valid_to, pay_currency, pay_unit, pay_amount, created_by, created_at, entity_position_id, project_position_id) FROM stdin;
+COPY global."502_hr_positions" (position_id, position_class, position_name, position_superior_id, position_description, valid_from, valid_to, created_by, created_at, project_id, entity_id) FROM stdin;
+37	operational	Data Controller	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 21:53:35.628246+03	1	\N
+38	operational	Data Controller	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 21:53:35.628246+03	2	\N
+39	operational	Data Controller	25	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 21:53:35.628246+03	3	\N
+1	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	1	\N
+13	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	2	\N
+25	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	3	\N
+31	statutory	Директор	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	\N	1
+33	statutory	Direktorius	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	\N	2
+35	statutory	Prezes Zarządu	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	\N	3
+8	operational	Chief System Engineer	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
+7	operational	DevOps/Cybersecurity Specialist	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
+10	operational	Procurement/Logistics Specialist	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
+11	operational	GR Manager	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
+12	operational	Legal Counsel	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
+20	operational	Chief System Engineer	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
+19	operational	DevOps/Cybersecurity Specialist	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
+22	operational	Procurement/Logistics Specialist	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
+23	operational	GR Manager	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
+24	operational	Legal Counsel	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
+28	operational	System Engineer	25	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	3	\N
+32	statutory	Головний бухгалтер	31	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	\N	1
+34	statutory	Vyriausiasis buhalteris	33	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	\N	2
+36	statutory	Główny Księgowy	35	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	\N	3
+2	operational	System Engineer	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
+3	operational	Electrical Systems and Electronics Specialist	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
+4	operational	Mechanical Systems Specialist	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
+5	operational	Worker	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
+9	operational	Electronics and Antennae Systems Engineer/Software Developer	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
+14	operational	System Engineer	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
+15	operational	Electrical Systems and Electronics Specialist	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
+16	operational	Mechanical Systems Specialist	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
+17	operational	Worker	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
+21	operational	Electronics and Antennae Systems Engineer/Software Developer	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
+26	operational	Worker	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	3	\N
+29	operational	Mechanical Systems Specialist	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	3	\N
+30	operational	Chemist	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	3	\N
+40	statutory	Operations Officer	33	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-26 09:05:32.745033+03	\N	2
+41	statutory	Inżynier Systemów	35	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-26 11:45:46.444263+03	\N	3
 \.
 
 
 --
--- Data for Name: gd_027_positions; Type: TABLE DATA; Schema: global; Owner: postgres
+-- Data for Name: 601_scen_budgets; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global.gd_027_positions (position_id, position_class, position_name, position_superior_id, position_description, valid_from, valid_to, created_by, created_at) FROM stdin;
+COPY global."601_scen_budgets" (budget_id, budget_name, budget_type, scenario_id, entity_id, period_from, period_to, approved_by, approved_at, superseded_by_budget_id, created_by, created_at) FROM stdin;
+\.
+
+
+--
+-- Data for Name: 602_scen_scenarios; Type: TABLE DATA; Schema: global; Owner: postgres
+--
+
+COPY global."602_scen_scenarios" (scenario_id, scenario_name, scenario_description, base_date, created_by, created_at, scenario_type, scenario_status) FROM stdin;
 \.
 
 
@@ -18958,7 +19511,7 @@ SELECT pg_catalog.setval('global.gd_002_primitive_transitions_primitive_transiti
 -- Name: gd_004_entities_entity_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-SELECT pg_catalog.setval('global.gd_004_entities_entity_id_seq', 1, false);
+SELECT pg_catalog.setval('global.gd_004_entities_entity_id_seq', 3, true);
 
 
 --
@@ -18979,7 +19532,7 @@ SELECT pg_catalog.setval('global.gd_006_commit_records_commit_id_seq', 1, false)
 -- Name: gd_008_governance_identities_governance_identity_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-SELECT pg_catalog.setval('global.gd_008_governance_identities_governance_identity_id_seq', 1, false);
+SELECT pg_catalog.setval('global.gd_008_governance_identities_governance_identity_id_seq', 6, true);
 
 
 --
@@ -19000,7 +19553,7 @@ SELECT pg_catalog.setval('global.gd_012_currency_registry_currency_id_seq', 5, t
 -- Name: gd_013_people_person_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-SELECT pg_catalog.setval('global.gd_013_people_person_id_seq', 21, true);
+SELECT pg_catalog.setval('global.gd_013_people_person_id_seq', 41, true);
 
 
 --
@@ -19049,1178 +19602,1280 @@ SELECT pg_catalog.setval('global.gd_022_delegations_delegation_id_seq', 1, false
 -- Name: gd_025_projects_project_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-SELECT pg_catalog.setval('global.gd_025_projects_project_id_seq', 1, false);
+SELECT pg_catalog.setval('global.gd_025_projects_project_id_seq', 3, true);
 
 
 --
--- Name: gd_026_teammembers_arrangement_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
+-- Name: gd_026_teammembers_arrangement_id_seq1; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-SELECT pg_catalog.setval('global.gd_026_teammembers_arrangement_id_seq', 1, false);
+SELECT pg_catalog.setval('global.gd_026_teammembers_arrangement_id_seq1', 107, true);
 
 
 --
 -- Name: gd_027_positions_position_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-SELECT pg_catalog.setval('global.gd_027_positions_position_id_seq', 1, false);
+SELECT pg_catalog.setval('global.gd_027_positions_position_id_seq', 41, true);
 
 
 --
--- Name: gd_001_events gd_001_events_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: gd_029_budgets_budget_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
+SELECT pg_catalog.setval('global.gd_029_budgets_budget_id_seq', 1, false);
+
+
+--
+-- Name: 301_evt_events gd_001_events_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."301_evt_events"
     ADD CONSTRAINT gd_001_events_pk PRIMARY KEY (event_id);
 
 
 --
--- Name: gd_001_events gd_001_events_replay_sequence_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 301_evt_events gd_001_events_replay_sequence_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
+ALTER TABLE ONLY global."301_evt_events"
     ADD CONSTRAINT gd_001_events_replay_sequence_uq UNIQUE (replay_sequence);
 
 
 --
--- Name: gd_002_primitive_transitions gd_002_primitive_transitions_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_002_primitive_transitions
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
     ADD CONSTRAINT gd_002_primitive_transitions_pk PRIMARY KEY (primitive_transition_id);
 
 
 --
--- Name: gd_004_entities gd_003_entities_entity_reg_number_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 001_core_entities gd_003_entities_entity_reg_number_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_004_entities
+ALTER TABLE ONLY global."001_core_entities"
     ADD CONSTRAINT gd_003_entities_entity_reg_number_uq UNIQUE (entity_reg_number);
 
 
 --
--- Name: gd_004_entities gd_003_entities_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 001_core_entities gd_003_entities_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_004_entities
+ALTER TABLE ONLY global."001_core_entities"
     ADD CONSTRAINT gd_003_entities_pk PRIMARY KEY (entity_id);
 
 
 --
--- Name: gd_015_exchange_rates gd_004_exchange_rates_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 401_ref_exchange_rates gd_004_exchange_rates_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_015_exchange_rates
+ALTER TABLE ONLY global."401_ref_exchange_rates"
     ADD CONSTRAINT gd_004_exchange_rates_pk PRIMARY KEY (rate_id);
 
 
 --
--- Name: gd_015_exchange_rates gd_004_exchange_rates_unique_rate; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 401_ref_exchange_rates gd_004_exchange_rates_unique_rate; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_015_exchange_rates
+ALTER TABLE ONLY global."401_ref_exchange_rates"
     ADD CONSTRAINT gd_004_exchange_rates_unique_rate UNIQUE (rate_timestamp, base_currency, quote_currency, rate_code);
 
 
 --
--- Name: gd_006_commit_records gd_005_commit_records_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 104_gov_commits gd_005_commit_records_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_006_commit_records
+ALTER TABLE ONLY global."104_gov_commits"
     ADD CONSTRAINT gd_005_commit_records_pk PRIMARY KEY (commit_id);
 
 
 --
--- Name: gd_007_status_registry gd_006_status_registry_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 407_ref_statuses gd_006_status_registry_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_007_status_registry
+ALTER TABLE ONLY global."407_ref_statuses"
     ADD CONSTRAINT gd_006_status_registry_pk PRIMARY KEY (status_type, status_code);
 
 
 --
--- Name: gd_013_people gd_007_people_person_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 002_core_people gd_007_people_person_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_013_people
+ALTER TABLE ONLY global."002_core_people"
     ADD CONSTRAINT gd_007_people_person_code_uq UNIQUE (person_code);
 
 
 --
--- Name: gd_013_people gd_007_people_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 002_core_people gd_007_people_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_013_people
+ALTER TABLE ONLY global."002_core_people"
     ADD CONSTRAINT gd_007_people_pk PRIMARY KEY (person_id);
 
 
 --
--- Name: gd_003_ruleset_registry gd_008_ruleset_registry_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 202_fin_rulesets gd_008_ruleset_registry_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_003_ruleset_registry
+ALTER TABLE ONLY global."202_fin_rulesets"
     ADD CONSTRAINT gd_008_ruleset_registry_pk PRIMARY KEY (ruleset_id);
 
 
 --
--- Name: gd_005_ruleset_lines gd_009_ruleset_lines_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 203_fin_ruleset_lines gd_009_ruleset_lines_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_005_ruleset_lines
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
     ADD CONSTRAINT gd_009_ruleset_lines_pk PRIMARY KEY (line_id);
 
 
 --
--- Name: gd_011_holidays gd_011_holidays_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 410_cal_holidays gd_011_holidays_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_011_holidays
+ALTER TABLE ONLY global."410_cal_holidays"
     ADD CONSTRAINT gd_011_holidays_pk PRIMARY KEY (holiday_id);
 
 
 --
--- Name: gd_011_holidays gd_011_holidays_unique; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 410_cal_holidays gd_011_holidays_unique; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_011_holidays
+ALTER TABLE ONLY global."410_cal_holidays"
     ADD CONSTRAINT gd_011_holidays_unique UNIQUE (country_code, holiday_date, holiday_type);
 
 
 --
--- Name: gd_012_currency_registry gd_012_currency_registry_iso_alpha_3_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 403_ref_currencies gd_012_currency_registry_iso_alpha_3_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_012_currency_registry
+ALTER TABLE ONLY global."403_ref_currencies"
     ADD CONSTRAINT gd_012_currency_registry_iso_alpha_3_uq UNIQUE (iso_alpha_3);
 
 
 --
--- Name: gd_012_currency_registry gd_012_currency_registry_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 403_ref_currencies gd_012_currency_registry_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_012_currency_registry
+ALTER TABLE ONLY global."403_ref_currencies"
     ADD CONSTRAINT gd_012_currency_registry_pk PRIMARY KEY (currency_id);
 
 
 --
--- Name: gd_008_governance_identities gd_013_governance_identities_identity_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 101_gov_identities gd_013_governance_identities_identity_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_008_governance_identities
+ALTER TABLE ONLY global."101_gov_identities"
     ADD CONSTRAINT gd_013_governance_identities_identity_code_uq UNIQUE (identity_code);
 
 
 --
--- Name: gd_008_governance_identities gd_013_governance_identities_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 101_gov_identities gd_013_governance_identities_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_008_governance_identities
+ALTER TABLE ONLY global."101_gov_identities"
     ADD CONSTRAINT gd_013_governance_identities_pk PRIMARY KEY (governance_identity_id);
 
 
 --
--- Name: gd_018_rate_codes gd_014_rate_codes_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 404_ref_rate_sources gd_014_rate_codes_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_018_rate_codes
+ALTER TABLE ONLY global."404_ref_rate_sources"
     ADD CONSTRAINT gd_014_rate_codes_pkey PRIMARY KEY (rate_code);
 
 
 --
--- Name: gd_016_coa gd_016_coa_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 201_fin_coa gd_016_coa_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_016_coa
+ALTER TABLE ONLY global."201_fin_coa"
     ADD CONSTRAINT gd_016_coa_pk PRIMARY KEY (account_code);
 
 
 --
--- Name: gd_017_naming_conventions gd_017_naming_conventions_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 405_ref_names gd_017_naming_conventions_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_017_naming_conventions
+ALTER TABLE ONLY global."405_ref_names"
     ADD CONSTRAINT gd_017_naming_conventions_pk PRIMARY KEY (naming_id);
 
 
 --
--- Name: gd_017_naming_conventions gd_017_naming_conventions_unique; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 405_ref_names gd_017_naming_conventions_unique; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_017_naming_conventions
+ALTER TABLE ONLY global."405_ref_names"
     ADD CONSTRAINT gd_017_naming_conventions_unique UNIQUE (object_type, object_ref, translation_language);
 
 
 --
--- Name: gd_019_pt_types gd_019_pt_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 406_ref_pt_types gd_019_pt_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_019_pt_types
+ALTER TABLE ONLY global."406_ref_pt_types"
     ADD CONSTRAINT gd_019_pt_types_pkey PRIMARY KEY (pt_type_code);
 
 
 --
--- Name: gd_020_scenarios gd_020_scenarios_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 602_scen_scenarios gd_020_scenarios_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_020_scenarios
+ALTER TABLE ONLY global."602_scen_scenarios"
     ADD CONSTRAINT gd_020_scenarios_pkey PRIMARY KEY (scenario_id);
 
 
 --
--- Name: gd_020_scenarios gd_020_scenarios_scenario_name_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 602_scen_scenarios gd_020_scenarios_scenario_name_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_020_scenarios
+ALTER TABLE ONLY global."602_scen_scenarios"
     ADD CONSTRAINT gd_020_scenarios_scenario_name_uq UNIQUE (scenario_name);
 
 
 --
--- Name: gd_021_proposals gd_021_proposals_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 102_gov_proposals gd_021_proposals_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_021_proposals
+ALTER TABLE ONLY global."102_gov_proposals"
     ADD CONSTRAINT gd_021_proposals_pkey PRIMARY KEY (proposal_id);
 
 
 --
--- Name: gd_022_delegations gd_022_delegations_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 103_gov_delegations gd_022_delegations_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_022_delegations
+ALTER TABLE ONLY global."103_gov_delegations"
     ADD CONSTRAINT gd_022_delegations_pkey PRIMARY KEY (delegation_id);
 
 
 --
--- Name: gd_023_event_types gd_023_event_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 408_ref_event_types gd_023_event_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_023_event_types
+ALTER TABLE ONLY global."408_ref_event_types"
     ADD CONSTRAINT gd_023_event_types_pkey PRIMARY KEY (event_type_code);
 
 
 --
--- Name: gd_024_legal_arrangement_types gd_024_legal_arrangement_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 410_ref_arrangement_types gd_024_legal_arrangement_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_024_legal_arrangement_types
+ALTER TABLE ONLY global."410_ref_arrangement_types"
     ADD CONSTRAINT gd_024_legal_arrangement_types_pkey PRIMARY KEY (arrangement_type_code);
 
 
 --
--- Name: gd_025_projects gd_025_projects_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 003_core_projects gd_025_projects_code_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_025_projects
+ALTER TABLE ONLY global."003_core_projects"
     ADD CONSTRAINT gd_025_projects_code_uq UNIQUE (project_code);
 
 
 --
--- Name: gd_025_projects gd_025_projects_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 003_core_projects gd_025_projects_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_025_projects
+ALTER TABLE ONLY global."003_core_projects"
     ADD CONSTRAINT gd_025_projects_pkey PRIMARY KEY (project_id);
 
 
 --
--- Name: gd_026_teammembers gd_026_teammembers_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 501_hr_arrangements gd_026_tm_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_teammembers_pkey PRIMARY KEY (arrangement_id);
-
-
---
--- Name: gd_027_positions gd_027_positions_id_class_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_027_positions
-    ADD CONSTRAINT gd_027_positions_id_class_uq UNIQUE (position_id, position_class);
+ALTER TABLE ONLY global."501_hr_arrangements"
+    ADD CONSTRAINT gd_026_tm_pkey PRIMARY KEY (arrangement_id);
 
 
 --
--- Name: gd_027_positions gd_027_positions_name_class_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 502_hr_positions gd_027_positions_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_027_positions
-    ADD CONSTRAINT gd_027_positions_name_class_uq UNIQUE (position_name, position_class);
-
-
---
--- Name: gd_027_positions gd_027_positions_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global.gd_027_positions
+ALTER TABLE ONLY global."502_hr_positions"
     ADD CONSTRAINT gd_027_positions_pkey PRIMARY KEY (position_id);
+
+
+--
+-- Name: 409_ref_coa_account_types gd_028_coa_account_types_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."409_ref_coa_account_types"
+    ADD CONSTRAINT gd_028_coa_account_types_pkey PRIMARY KEY (account_type_code);
+
+
+--
+-- Name: 601_scen_budgets gd_029_budgets_name_entity_uq; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."601_scen_budgets"
+    ADD CONSTRAINT gd_029_budgets_name_entity_uq UNIQUE (budget_name, entity_id);
+
+
+--
+-- Name: 601_scen_budgets gd_029_budgets_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."601_scen_budgets"
+    ADD CONSTRAINT gd_029_budgets_pkey PRIMARY KEY (budget_id);
 
 
 --
 -- Name: gd_001_events_assertion_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_assertion_time_idx ON global.gd_001_events USING btree (assertion_time);
+CREATE INDEX gd_001_events_assertion_time_idx ON global."301_evt_events" USING btree (assertion_time);
 
 
 --
 -- Name: gd_001_events_commit_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_commit_id_idx ON global.gd_001_events USING btree (commit_id);
+CREATE INDEX gd_001_events_commit_id_idx ON global."301_evt_events" USING btree (commit_id);
 
 
 --
 -- Name: gd_001_events_commit_replay_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_commit_replay_idx ON global.gd_001_events USING btree (commit_id, replay_sequence);
+CREATE INDEX gd_001_events_commit_replay_idx ON global."301_evt_events" USING btree (commit_id, replay_sequence);
 
 
 --
 -- Name: gd_001_events_corrective_of_event_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_corrective_of_event_id_idx ON global.gd_001_events USING btree (corrective_of_event_id) WHERE (corrective_of_event_id IS NOT NULL);
+CREATE INDEX gd_001_events_corrective_of_event_id_idx ON global."301_evt_events" USING btree (corrective_of_event_id) WHERE (corrective_of_event_id IS NOT NULL);
 
 
 --
 -- Name: gd_001_events_entity_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_entity_id_idx ON global.gd_001_events USING btree (entity_id);
+CREATE INDEX gd_001_events_entity_id_idx ON global."301_evt_events" USING btree (entity_id);
 
 
 --
 -- Name: gd_001_events_entity_status_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_entity_status_time_idx ON global.gd_001_events USING btree (entity_id, event_status, valid_time);
+CREATE INDEX gd_001_events_entity_status_time_idx ON global."301_evt_events" USING btree (entity_id, event_status, valid_time);
 
 
 --
 -- Name: gd_001_events_entity_time_committed_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_entity_time_committed_idx ON global.gd_001_events USING btree (entity_id, valid_time) WHERE ((event_status)::text = 'committed'::text);
+CREATE INDEX gd_001_events_entity_time_committed_idx ON global."301_evt_events" USING btree (entity_id, valid_time) WHERE ((event_status)::text = 'committed'::text);
 
 
 --
 -- Name: gd_001_events_event_status_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_event_status_idx ON global.gd_001_events USING btree (event_status);
+CREATE INDEX gd_001_events_event_status_idx ON global."301_evt_events" USING btree (event_status);
 
 
 --
 -- Name: gd_001_events_event_type_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_event_type_idx ON global.gd_001_events USING btree (event_type);
+CREATE INDEX gd_001_events_event_type_idx ON global."301_evt_events" USING btree (event_type);
 
 
 --
 -- Name: gd_001_events_replay_sequence_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_replay_sequence_idx ON global.gd_001_events USING btree (replay_sequence);
+CREATE INDEX gd_001_events_replay_sequence_idx ON global."301_evt_events" USING btree (replay_sequence);
 
 
 --
 -- Name: gd_001_events_valid_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_001_events_valid_time_idx ON global.gd_001_events USING btree (valid_time);
+CREATE INDEX gd_001_events_valid_time_idx ON global."301_evt_events" USING btree (valid_time);
 
 
 --
 -- Name: gd_002_primitive_transitions_account_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_002_primitive_transitions_account_idx ON global.gd_002_primitive_transitions USING btree (account_code);
+CREATE INDEX gd_002_primitive_transitions_account_idx ON global."302_evt_primitive_transitions" USING btree (account_code);
 
 
 --
 -- Name: gd_002_primitive_transitions_description_trgm_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_002_primitive_transitions_description_trgm_idx ON global.gd_002_primitive_transitions USING gin (transition_description public.gin_trgm_ops) WHERE (transition_description IS NOT NULL);
+CREATE INDEX gd_002_primitive_transitions_description_trgm_idx ON global."302_evt_primitive_transitions" USING gin (transition_description public.gin_trgm_ops) WHERE (transition_description IS NOT NULL);
 
 
 --
 -- Name: gd_002_primitive_transitions_entity_account_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_002_primitive_transitions_entity_account_time_idx ON global.gd_002_primitive_transitions USING btree (entity_id, account_code, valid_time);
+CREATE INDEX gd_002_primitive_transitions_entity_account_time_idx ON global."302_evt_primitive_transitions" USING btree (entity_id, account_code, valid_time);
 
 
 --
 -- Name: gd_002_primitive_transitions_entity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_002_primitive_transitions_entity_idx ON global.gd_002_primitive_transitions USING btree (entity_id);
+CREATE INDEX gd_002_primitive_transitions_entity_idx ON global."302_evt_primitive_transitions" USING btree (entity_id);
 
 
 --
 -- Name: gd_002_primitive_transitions_event_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_002_primitive_transitions_event_idx ON global.gd_002_primitive_transitions USING btree (event_id);
+CREATE INDEX gd_002_primitive_transitions_event_idx ON global."302_evt_primitive_transitions" USING btree (event_id);
 
 
 --
 -- Name: gd_002_primitive_transitions_valid_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_002_primitive_transitions_valid_time_idx ON global.gd_002_primitive_transitions USING btree (valid_time);
+CREATE INDEX gd_002_primitive_transitions_valid_time_idx ON global."302_evt_primitive_transitions" USING btree (valid_time);
 
 
 --
 -- Name: gd_003_entities_country_code_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_003_entities_country_code_idx ON global.gd_004_entities USING btree (country_code);
+CREATE INDEX gd_003_entities_country_code_idx ON global."001_core_entities" USING btree (country_code);
 
 
 --
 -- Name: gd_003_entities_name_trgm_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_003_entities_name_trgm_idx ON global.gd_004_entities USING gin (normalized_name public.gin_trgm_ops);
+CREATE INDEX gd_003_entities_name_trgm_idx ON global."001_core_entities" USING gin (normalized_name public.gin_trgm_ops);
 
 
 --
 -- Name: gd_003_entities_tax_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_003_entities_tax_id_idx ON global.gd_004_entities USING btree (tax_id);
+CREATE INDEX gd_003_entities_tax_id_idx ON global."001_core_entities" USING btree (tax_id);
 
 
 --
 -- Name: gd_003_entities_vat_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_003_entities_vat_id_idx ON global.gd_004_entities USING btree (vat_id);
+CREATE INDEX gd_003_entities_vat_id_idx ON global."001_core_entities" USING btree (vat_id);
 
 
 --
 -- Name: gd_004_exchange_rates_currency_pair_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_004_exchange_rates_currency_pair_idx ON global.gd_015_exchange_rates USING btree (base_currency, quote_currency);
+CREATE INDEX gd_004_exchange_rates_currency_pair_idx ON global."401_ref_exchange_rates" USING btree (base_currency, quote_currency);
 
 
 --
 -- Name: gd_004_exchange_rates_rate_code_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_004_exchange_rates_rate_code_idx ON global.gd_015_exchange_rates USING btree (rate_code);
+CREATE INDEX gd_004_exchange_rates_rate_code_idx ON global."401_ref_exchange_rates" USING btree (rate_code);
 
 
 --
 -- Name: gd_004_exchange_rates_timestamp_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_004_exchange_rates_timestamp_idx ON global.gd_015_exchange_rates USING btree (rate_timestamp);
+CREATE INDEX gd_004_exchange_rates_timestamp_idx ON global."401_ref_exchange_rates" USING btree (rate_timestamp);
 
 
 --
 -- Name: gd_005_commit_records_commit_status_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_commit_records_commit_status_idx ON global.gd_006_commit_records USING btree (commit_status);
+CREATE INDEX gd_005_commit_records_commit_status_idx ON global."104_gov_commits" USING btree (commit_status);
 
 
 --
 -- Name: gd_005_commit_records_commit_timestamp_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_commit_records_commit_timestamp_idx ON global.gd_006_commit_records USING btree (commit_timestamp);
+CREATE INDEX gd_005_commit_records_commit_timestamp_idx ON global."104_gov_commits" USING btree (commit_timestamp);
 
 
 --
 -- Name: gd_005_commit_records_commit_type_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_commit_records_commit_type_idx ON global.gd_006_commit_records USING btree (commit_type);
+CREATE INDEX gd_005_commit_records_commit_type_idx ON global."104_gov_commits" USING btree (commit_type);
 
 
 --
 -- Name: gd_005_commit_records_committing_authority_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_commit_records_committing_authority_id_idx ON global.gd_006_commit_records USING btree (committing_authority_id);
+CREATE INDEX gd_005_commit_records_committing_authority_id_idx ON global."104_gov_commits" USING btree (committing_authority_id);
 
 
 --
 -- Name: gd_005_ruleset_lines_account_code_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_ruleset_lines_account_code_idx ON global.gd_005_ruleset_lines USING btree (account_code) WHERE (account_code IS NOT NULL);
+CREATE INDEX gd_005_ruleset_lines_account_code_idx ON global."203_fin_ruleset_lines" USING btree (account_code) WHERE (account_code IS NOT NULL);
 
 
 --
 -- Name: gd_005_ruleset_lines_entity_1_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_ruleset_lines_entity_1_id_idx ON global.gd_005_ruleset_lines USING btree (entity_1_id) WHERE (entity_1_id IS NOT NULL);
+CREATE INDEX gd_005_ruleset_lines_entity_1_id_idx ON global."203_fin_ruleset_lines" USING btree (entity_1_id) WHERE (entity_1_id IS NOT NULL);
 
 
 --
 -- Name: gd_005_ruleset_lines_entity_2_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_ruleset_lines_entity_2_id_idx ON global.gd_005_ruleset_lines USING btree (entity_2_id) WHERE (entity_2_id IS NOT NULL);
+CREATE INDEX gd_005_ruleset_lines_entity_2_id_idx ON global."203_fin_ruleset_lines" USING btree (entity_2_id) WHERE (entity_2_id IS NOT NULL);
 
 
 --
 -- Name: gd_005_ruleset_lines_ruleset_validity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_005_ruleset_lines_ruleset_validity_idx ON global.gd_005_ruleset_lines USING btree (ruleset_id, valid_from, valid_to);
+CREATE INDEX gd_005_ruleset_lines_ruleset_validity_idx ON global."203_fin_ruleset_lines" USING btree (ruleset_id, valid_from, valid_to);
 
 
 --
 -- Name: gd_006_status_registry_status_type_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_006_status_registry_status_type_idx ON global.gd_007_status_registry USING btree (status_type);
+CREATE INDEX gd_006_status_registry_status_type_idx ON global."407_ref_statuses" USING btree (status_type);
 
 
 --
 -- Name: gd_007_people_country_code_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_007_people_country_code_idx ON global.gd_013_people USING btree (country_code);
+CREATE INDEX gd_007_people_country_code_idx ON global."002_core_people" USING btree (country_code);
 
 
 --
 -- Name: gd_007_people_last_name_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_007_people_last_name_idx ON global.gd_013_people USING btree (last_name);
+CREATE INDEX gd_007_people_last_name_idx ON global."002_core_people" USING btree (last_name);
 
 
 --
 -- Name: gd_007_people_tax_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_007_people_tax_id_idx ON global.gd_013_people USING btree (tax_id);
+CREATE INDEX gd_007_people_tax_id_idx ON global."002_core_people" USING btree (tax_id);
+
+
+--
+-- Name: gd_008_governance_identities_created_by_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_008_governance_identities_created_by_idx ON global."101_gov_identities" USING btree (created_by_identity_id) WHERE (created_by_identity_id IS NOT NULL);
 
 
 --
 -- Name: gd_008_governance_identities_validity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_008_governance_identities_validity_idx ON global.gd_008_governance_identities USING btree (valid_from, valid_to);
+CREATE INDEX gd_008_governance_identities_validity_idx ON global."101_gov_identities" USING btree (valid_from, valid_to);
 
 
 --
 -- Name: gd_009_ruleset_lines_ruleset_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_009_ruleset_lines_ruleset_id_idx ON global.gd_005_ruleset_lines USING btree (ruleset_id);
+CREATE INDEX gd_009_ruleset_lines_ruleset_id_idx ON global."203_fin_ruleset_lines" USING btree (ruleset_id);
 
 
 --
 -- Name: gd_009_ruleset_lines_validity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_009_ruleset_lines_validity_idx ON global.gd_005_ruleset_lines USING btree (valid_from, valid_to);
+CREATE INDEX gd_009_ruleset_lines_validity_idx ON global."203_fin_ruleset_lines" USING btree (valid_from, valid_to);
 
 
 --
 -- Name: gd_011_holidays_country_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_011_holidays_country_idx ON global.gd_011_holidays USING btree (country_code);
+CREATE INDEX gd_011_holidays_country_idx ON global."410_cal_holidays" USING btree (country_code);
 
 
 --
 -- Name: gd_011_holidays_date_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_011_holidays_date_idx ON global.gd_011_holidays USING btree (holiday_date);
+CREATE INDEX gd_011_holidays_date_idx ON global."410_cal_holidays" USING btree (holiday_date);
 
 
 --
 -- Name: gd_011_holidays_type_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_011_holidays_type_idx ON global.gd_011_holidays USING btree (holiday_type);
+CREATE INDEX gd_011_holidays_type_idx ON global."410_cal_holidays" USING btree (holiday_type);
 
 
 --
 -- Name: gd_012_currency_registry_alpha2_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_012_currency_registry_alpha2_idx ON global.gd_012_currency_registry USING btree (iso_alpha_2);
+CREATE INDEX gd_012_currency_registry_alpha2_idx ON global."403_ref_currencies" USING btree (iso_alpha_2);
 
 
 --
 -- Name: gd_012_currency_registry_alpha3_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_012_currency_registry_alpha3_idx ON global.gd_012_currency_registry USING btree (iso_alpha_3);
+CREATE INDEX gd_012_currency_registry_alpha3_idx ON global."403_ref_currencies" USING btree (iso_alpha_3);
 
 
 --
 -- Name: gd_013_governance_identities_identity_status_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_013_governance_identities_identity_status_idx ON global.gd_008_governance_identities USING btree (identity_status);
+CREATE INDEX gd_013_governance_identities_identity_status_idx ON global."101_gov_identities" USING btree (identity_status);
 
 
 --
 -- Name: gd_013_governance_identities_identity_type_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_013_governance_identities_identity_type_idx ON global.gd_008_governance_identities USING btree (identity_type);
+CREATE INDEX gd_013_governance_identities_identity_type_idx ON global."101_gov_identities" USING btree (identity_type);
 
 
 --
 -- Name: gd_013_governance_identities_valid_from_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_013_governance_identities_valid_from_idx ON global.gd_008_governance_identities USING btree (valid_from);
+CREATE INDEX gd_013_governance_identities_valid_from_idx ON global."101_gov_identities" USING btree (valid_from);
 
 
 --
 -- Name: gd_013_governance_identities_valid_to_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_013_governance_identities_valid_to_idx ON global.gd_008_governance_identities USING btree (valid_to);
+CREATE INDEX gd_013_governance_identities_valid_to_idx ON global."101_gov_identities" USING btree (valid_to);
 
 
 --
 -- Name: gd_015_exchange_rates_pair_time_code_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_015_exchange_rates_pair_time_code_idx ON global.gd_015_exchange_rates USING btree (base_currency, quote_currency, rate_timestamp, rate_code);
+CREATE INDEX gd_015_exchange_rates_pair_time_code_idx ON global."401_ref_exchange_rates" USING btree (base_currency, quote_currency, rate_timestamp, rate_code);
 
 
 --
 -- Name: gd_016_coa_account_name_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_016_coa_account_name_idx ON global.gd_016_coa USING btree (account_name);
+CREATE INDEX gd_016_coa_account_name_idx ON global."201_fin_coa" USING btree (account_name) WHERE (account_name IS NOT NULL);
+
+
+--
+-- Name: gd_016_coa_account_type_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_016_coa_account_type_idx ON global."201_fin_coa" USING btree (account_type) WHERE (account_type IS NOT NULL);
 
 
 --
 -- Name: gd_016_coa_parent_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_016_coa_parent_idx ON global.gd_016_coa USING btree (parent_account_code);
-
-
---
--- Name: gd_016_coa_ruleset_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_016_coa_ruleset_idx ON global.gd_016_coa USING btree (ruleset_id);
+CREATE INDEX gd_016_coa_parent_idx ON global."201_fin_coa" USING btree (parent_account_code);
 
 
 --
 -- Name: gd_017_naming_conventions_language_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_017_naming_conventions_language_idx ON global.gd_017_naming_conventions USING btree (translation_language);
+CREATE INDEX gd_017_naming_conventions_language_idx ON global."405_ref_names" USING btree (translation_language);
 
 
 --
 -- Name: gd_017_naming_conventions_object_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_017_naming_conventions_object_idx ON global.gd_017_naming_conventions USING btree (object_type, object_ref);
+CREATE INDEX gd_017_naming_conventions_object_idx ON global."405_ref_names" USING btree (object_type, object_ref);
 
 
 --
 -- Name: gd_020_scenarios_base_date_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_020_scenarios_base_date_idx ON global.gd_020_scenarios USING btree (base_date);
+CREATE INDEX gd_020_scenarios_base_date_idx ON global."602_scen_scenarios" USING btree (base_date);
+
+
+--
+-- Name: gd_020_scenarios_status_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_020_scenarios_status_idx ON global."602_scen_scenarios" USING btree (scenario_status);
+
+
+--
+-- Name: gd_020_scenarios_type_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_020_scenarios_type_idx ON global."602_scen_scenarios" USING btree (scenario_type);
 
 
 --
 -- Name: gd_021_proposals_created_at_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_021_proposals_created_at_idx ON global.gd_021_proposals USING btree (created_at);
+CREATE INDEX gd_021_proposals_created_at_idx ON global."102_gov_proposals" USING btree (created_at);
 
 
 --
 -- Name: gd_021_proposals_entity_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_021_proposals_entity_id_idx ON global.gd_021_proposals USING btree (entity_id);
+CREATE INDEX gd_021_proposals_entity_id_idx ON global."102_gov_proposals" USING btree (entity_id);
 
 
 --
 -- Name: gd_021_proposals_payload_gin_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_021_proposals_payload_gin_idx ON global.gd_021_proposals USING gin (proposal_payload);
+CREATE INDEX gd_021_proposals_payload_gin_idx ON global."102_gov_proposals" USING gin (proposal_payload);
 
 
 --
 -- Name: gd_021_proposals_scenario_id_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_021_proposals_scenario_id_idx ON global.gd_021_proposals USING btree (scenario_id);
+CREATE INDEX gd_021_proposals_scenario_id_idx ON global."102_gov_proposals" USING btree (scenario_id);
 
 
 --
 -- Name: gd_021_proposals_status_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_021_proposals_status_idx ON global.gd_021_proposals USING btree (proposal_status);
+CREATE INDEX gd_021_proposals_status_idx ON global."102_gov_proposals" USING btree (proposal_status);
 
 
 --
 -- Name: gd_021_proposals_type_status_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_021_proposals_type_status_idx ON global.gd_021_proposals USING btree (proposal_type, proposal_status);
+CREATE INDEX gd_021_proposals_type_status_idx ON global."102_gov_proposals" USING btree (proposal_type, proposal_status);
 
 
 --
 -- Name: gd_022_delegations_delegatee_active_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_022_delegations_delegatee_active_idx ON global.gd_022_delegations USING btree (delegatee_id, delegation_scope, valid_from, valid_to) WHERE (revoked_at IS NULL);
+CREATE INDEX gd_022_delegations_delegatee_active_idx ON global."103_gov_delegations" USING btree (delegatee_id, delegation_scope, valid_from, valid_to) WHERE (revoked_at IS NULL);
 
 
 --
 -- Name: gd_022_delegations_delegator_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_022_delegations_delegator_idx ON global.gd_022_delegations USING btree (delegator_id);
+CREATE INDEX gd_022_delegations_delegator_idx ON global."103_gov_delegations" USING btree (delegator_id);
 
 
 --
 -- Name: gd_022_delegations_entity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_022_delegations_entity_idx ON global.gd_022_delegations USING btree (entity_id) WHERE (entity_id IS NOT NULL);
+CREATE INDEX gd_022_delegations_entity_idx ON global."103_gov_delegations" USING btree (entity_id) WHERE (entity_id IS NOT NULL);
 
 
 --
 -- Name: gd_022_delegations_temporal_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_022_delegations_temporal_idx ON global.gd_022_delegations USING btree (valid_from, valid_to);
+CREATE INDEX gd_022_delegations_temporal_idx ON global."103_gov_delegations" USING btree (valid_from, valid_to);
 
 
 --
 -- Name: gd_024_lat_category_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_024_lat_category_idx ON global.gd_024_legal_arrangement_types USING btree (arrangement_category);
+CREATE INDEX gd_024_lat_category_idx ON global."410_ref_arrangement_types" USING btree (arrangement_category);
 
 
 --
 -- Name: gd_024_lat_jurisdiction_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_024_lat_jurisdiction_idx ON global.gd_024_legal_arrangement_types USING btree (jurisdiction_code) WHERE (jurisdiction_code IS NOT NULL);
-
-
---
--- Name: gd_025_projects_entity_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_025_projects_entity_idx ON global.gd_025_projects USING btree (entity_id) WHERE (entity_id IS NOT NULL);
+CREATE INDEX gd_024_lat_jurisdiction_idx ON global."410_ref_arrangement_types" USING btree (jurisdiction_code) WHERE (jurisdiction_code IS NOT NULL);
 
 
 --
 -- Name: gd_025_projects_owner_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_025_projects_owner_idx ON global.gd_025_projects USING btree (project_owner_id) WHERE (project_owner_id IS NOT NULL);
+CREATE INDEX gd_025_projects_owner_idx ON global."003_core_projects" USING btree (project_owner_arrangement_id) WHERE (project_owner_arrangement_id IS NOT NULL);
 
 
 --
 -- Name: gd_025_projects_validity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_025_projects_validity_idx ON global.gd_025_projects USING btree (valid_from, valid_to);
+CREATE INDEX gd_025_projects_validity_idx ON global."003_core_projects" USING btree (valid_from, valid_to);
 
 
 --
--- Name: gd_026_tm_currency_idx; Type: INDEX; Schema: global; Owner: postgres
+-- Name: gd_026_tm_entity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_026_tm_currency_idx ON global.gd_026_teammembers USING btree (pay_currency) WHERE (pay_currency IS NOT NULL);
-
-
---
--- Name: gd_026_tm_entity_arr_validity_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_026_tm_entity_arr_validity_idx ON global.gd_026_teammembers USING btree (entity_id, arrangement_valid_from, arrangement_valid_to);
+CREATE INDEX gd_026_tm_entity_idx ON global."501_hr_arrangements" USING btree (entity_id) WHERE (entity_id IS NOT NULL);
 
 
 --
--- Name: gd_026_tm_entity_position_idx; Type: INDEX; Schema: global; Owner: postgres
+-- Name: gd_026_tm_person_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_026_tm_entity_position_idx ON global.gd_026_teammembers USING btree (entity_position_id) WHERE (entity_position_id IS NOT NULL);
-
-
---
--- Name: gd_026_tm_person_arr_validity_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_026_tm_person_arr_validity_idx ON global.gd_026_teammembers USING btree (person_id, arrangement_valid_from, arrangement_valid_to);
+CREATE INDEX gd_026_tm_person_idx ON global."501_hr_arrangements" USING btree (person_id);
 
 
 --
--- Name: gd_026_tm_project_position_idx; Type: INDEX; Schema: global; Owner: postgres
+-- Name: gd_026_tm_position_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_026_tm_project_position_idx ON global.gd_026_teammembers USING btree (project_position_id) WHERE (project_position_id IS NOT NULL);
-
-
---
--- Name: gd_026_tm_project_validity_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_026_tm_project_validity_idx ON global.gd_026_teammembers USING btree (project_id, project_valid_from, project_valid_to) WHERE (project_id IS NOT NULL);
+CREATE INDEX gd_026_tm_position_idx ON global."501_hr_arrangements" USING btree (position_id) WHERE (position_id IS NOT NULL);
 
 
 --
--- Name: gd_026_tm_type_idx; Type: INDEX; Schema: global; Owner: postgres
+-- Name: gd_026_tm_project_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_026_tm_type_idx ON global.gd_026_teammembers USING btree (arrangement_type_code);
+CREATE INDEX gd_026_tm_project_idx ON global."501_hr_arrangements" USING btree (project_id) WHERE (project_id IS NOT NULL);
+
+
+--
+-- Name: gd_026_tm_validity_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_026_tm_validity_idx ON global."501_hr_arrangements" USING btree (valid_from, valid_to);
 
 
 --
 -- Name: gd_027_positions_class_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_027_positions_class_idx ON global.gd_027_positions USING btree (position_class);
+CREATE INDEX gd_027_positions_class_idx ON global."502_hr_positions" USING btree (position_class);
+
+
+--
+-- Name: gd_027_positions_entity_id_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_027_positions_entity_id_idx ON global."502_hr_positions" USING btree (entity_id) WHERE (entity_id IS NOT NULL);
+
+
+--
+-- Name: gd_027_positions_name_entity_uq; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE UNIQUE INDEX gd_027_positions_name_entity_uq ON global."502_hr_positions" USING btree (position_name, position_class, entity_id) WHERE ((entity_id IS NOT NULL) AND (project_id IS NULL));
+
+
+--
+-- Name: gd_027_positions_name_project_uq; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE UNIQUE INDEX gd_027_positions_name_project_uq ON global."502_hr_positions" USING btree (position_name, position_class, project_id) WHERE (project_id IS NOT NULL);
+
+
+--
+-- Name: gd_027_positions_name_universal_uq; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE UNIQUE INDEX gd_027_positions_name_universal_uq ON global."502_hr_positions" USING btree (position_name, position_class) WHERE ((project_id IS NULL) AND (entity_id IS NULL));
+
+
+--
+-- Name: gd_027_positions_project_id_idx; Type: INDEX; Schema: global; Owner: postgres
+--
+
+CREATE INDEX gd_027_positions_project_id_idx ON global."502_hr_positions" USING btree (project_id) WHERE (project_id IS NOT NULL);
 
 
 --
 -- Name: gd_027_positions_superior_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_027_positions_superior_idx ON global.gd_027_positions USING btree (position_superior_id) WHERE (position_superior_id IS NOT NULL);
+CREATE INDEX gd_027_positions_superior_idx ON global."502_hr_positions" USING btree (position_superior_id) WHERE (position_superior_id IS NOT NULL);
 
 
 --
 -- Name: gd_027_positions_validity_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-CREATE INDEX gd_027_positions_validity_idx ON global.gd_027_positions USING btree (valid_from, valid_to);
+CREATE INDEX gd_027_positions_validity_idx ON global."502_hr_positions" USING btree (valid_from, valid_to);
 
 
 --
--- Name: gd_001_events gd_001_events_commit_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: gd_029_budgets_entity_period_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
-    ADD CONSTRAINT gd_001_events_commit_id_fk FOREIGN KEY (commit_id) REFERENCES global.gd_006_commit_records(commit_id);
+CREATE INDEX gd_029_budgets_entity_period_idx ON global."601_scen_budgets" USING btree (entity_id, period_from, period_to) WHERE (entity_id IS NOT NULL);
 
 
 --
--- Name: gd_001_events gd_001_events_corrective_of_event_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: gd_029_budgets_scenario_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
-    ADD CONSTRAINT gd_001_events_corrective_of_event_fk FOREIGN KEY (corrective_of_event_id) REFERENCES global.gd_001_events(event_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+CREATE INDEX gd_029_budgets_scenario_idx ON global."601_scen_budgets" USING btree (scenario_id);
 
 
 --
--- Name: gd_001_events gd_001_events_entity_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: gd_029_budgets_superseded_by_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
-    ADD CONSTRAINT gd_001_events_entity_id_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+CREATE INDEX gd_029_budgets_superseded_by_idx ON global."601_scen_budgets" USING btree (superseded_by_budget_id) WHERE (superseded_by_budget_id IS NOT NULL);
 
 
 --
--- Name: gd_001_events gd_001_events_event_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: gd_029_budgets_type_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
-    ADD CONSTRAINT gd_001_events_event_type_fk FOREIGN KEY (event_type) REFERENCES global.gd_023_event_types(event_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+CREATE INDEX gd_029_budgets_type_idx ON global."601_scen_budgets" USING btree (budget_type);
 
 
 --
--- Name: gd_001_events gd_001_events_governance_scope_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 301_evt_events gd_001_events_commit_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_001_events
-    ADD CONSTRAINT gd_001_events_governance_scope_fk FOREIGN KEY (governance_scope_id) REFERENCES global.gd_008_governance_identities(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."301_evt_events"
+    ADD CONSTRAINT gd_001_events_commit_id_fk FOREIGN KEY (commit_id) REFERENCES global."104_gov_commits"(commit_id);
 
 
 --
--- Name: gd_002_primitive_transitions gd_002_primitive_transitions_account_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 301_evt_events gd_001_events_corrective_of_event_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_002_primitive_transitions
-    ADD CONSTRAINT gd_002_primitive_transitions_account_fk FOREIGN KEY (account_code) REFERENCES global.gd_016_coa(account_code);
+ALTER TABLE ONLY global."301_evt_events"
+    ADD CONSTRAINT gd_001_events_corrective_of_event_fk FOREIGN KEY (corrective_of_event_id) REFERENCES global."301_evt_events"(event_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_002_primitive_transitions gd_002_primitive_transitions_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 301_evt_events gd_001_events_entity_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_002_primitive_transitions
-    ADD CONSTRAINT gd_002_primitive_transitions_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id);
+ALTER TABLE ONLY global."301_evt_events"
+    ADD CONSTRAINT gd_001_events_entity_id_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_002_primitive_transitions gd_002_primitive_transitions_event_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 301_evt_events gd_001_events_event_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_002_primitive_transitions
-    ADD CONSTRAINT gd_002_primitive_transitions_event_fk FOREIGN KEY (event_id) REFERENCES global.gd_001_events(event_id);
+ALTER TABLE ONLY global."301_evt_events"
+    ADD CONSTRAINT gd_001_events_event_type_fk FOREIGN KEY (event_type) REFERENCES global."408_ref_event_types"(event_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_002_primitive_transitions gd_002_primitive_transitions_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 301_evt_events gd_001_events_governance_scope_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_002_primitive_transitions
-    ADD CONSTRAINT gd_002_primitive_transitions_type_fk FOREIGN KEY (primitive_transition_type) REFERENCES global.gd_019_pt_types(pt_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."301_evt_events"
+    ADD CONSTRAINT gd_001_events_governance_scope_fk FOREIGN KEY (governance_scope_id) REFERENCES global."101_gov_identities"(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_003_ruleset_registry gd_003_ruleset_registry_governance_scope_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_account_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_003_ruleset_registry
-    ADD CONSTRAINT gd_003_ruleset_registry_governance_scope_fk FOREIGN KEY (governance_scope_id) REFERENCES global.gd_008_governance_identities(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
+    ADD CONSTRAINT gd_002_primitive_transitions_account_fk FOREIGN KEY (account_code) REFERENCES global."201_fin_coa"(account_code);
 
 
 --
--- Name: gd_006_commit_records gd_005_commit_records_committing_authority_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_006_commit_records
-    ADD CONSTRAINT gd_005_commit_records_committing_authority_id_fk FOREIGN KEY (committing_authority_id) REFERENCES global.gd_008_governance_identities(governance_identity_id);
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
+    ADD CONSTRAINT gd_002_primitive_transitions_entity_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id);
 
 
 --
--- Name: gd_005_ruleset_lines gd_005_ruleset_lines_account_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_event_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_005_ruleset_lines
-    ADD CONSTRAINT gd_005_ruleset_lines_account_code_fk FOREIGN KEY (account_code) REFERENCES global.gd_016_coa(account_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
+    ADD CONSTRAINT gd_002_primitive_transitions_event_fk FOREIGN KEY (event_id) REFERENCES global."301_evt_events"(event_id);
 
 
 --
--- Name: gd_005_ruleset_lines gd_005_ruleset_lines_entity_1_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_005_ruleset_lines
-    ADD CONSTRAINT gd_005_ruleset_lines_entity_1_fk FOREIGN KEY (entity_1_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
+    ADD CONSTRAINT gd_002_primitive_transitions_type_fk FOREIGN KEY (primitive_transition_type) REFERENCES global."406_ref_pt_types"(pt_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_005_ruleset_lines gd_005_ruleset_lines_entity_2_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 202_fin_rulesets gd_003_ruleset_registry_governance_scope_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_005_ruleset_lines
-    ADD CONSTRAINT gd_005_ruleset_lines_entity_2_fk FOREIGN KEY (entity_2_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."202_fin_rulesets"
+    ADD CONSTRAINT gd_003_ruleset_registry_governance_scope_fk FOREIGN KEY (governance_scope_id) REFERENCES global."101_gov_identities"(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_005_ruleset_lines gd_009_ruleset_lines_ruleset_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 104_gov_commits gd_005_commit_records_committing_authority_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_005_ruleset_lines
-    ADD CONSTRAINT gd_009_ruleset_lines_ruleset_fk FOREIGN KEY (ruleset_id) REFERENCES global.gd_003_ruleset_registry(ruleset_id);
+ALTER TABLE ONLY global."104_gov_commits"
+    ADD CONSTRAINT gd_005_commit_records_committing_authority_id_fk FOREIGN KEY (committing_authority_id) REFERENCES global."101_gov_identities"(governance_identity_id);
 
 
 --
--- Name: gd_014_inflation_rates gd_014_inflation_rates_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 203_fin_ruleset_lines gd_005_ruleset_lines_account_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_014_inflation_rates
-    ADD CONSTRAINT gd_014_inflation_rates_currency_fk FOREIGN KEY (currency_code) REFERENCES global.gd_012_currency_registry(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
+    ADD CONSTRAINT gd_005_ruleset_lines_account_code_fk FOREIGN KEY (account_code) REFERENCES global."201_fin_coa"(account_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_014_inflation_rates gd_014_inflation_rates_rate_reference_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 203_fin_ruleset_lines gd_005_ruleset_lines_entity_1_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_014_inflation_rates
-    ADD CONSTRAINT gd_014_inflation_rates_rate_reference_fk FOREIGN KEY (rate_reference) REFERENCES global.gd_018_rate_codes(rate_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
+    ADD CONSTRAINT gd_005_ruleset_lines_entity_1_fk FOREIGN KEY (entity_1_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_015_exchange_rates gd_015_exchange_rates_base_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 203_fin_ruleset_lines gd_005_ruleset_lines_entity_2_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_015_exchange_rates
-    ADD CONSTRAINT gd_015_exchange_rates_base_currency_fk FOREIGN KEY (base_currency) REFERENCES global.gd_012_currency_registry(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
+    ADD CONSTRAINT gd_005_ruleset_lines_entity_2_fk FOREIGN KEY (entity_2_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_015_exchange_rates gd_015_exchange_rates_quote_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 101_gov_identities gd_008_governance_identities_created_by_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_015_exchange_rates
-    ADD CONSTRAINT gd_015_exchange_rates_quote_currency_fk FOREIGN KEY (quote_currency) REFERENCES global.gd_012_currency_registry(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."101_gov_identities"
+    ADD CONSTRAINT gd_008_governance_identities_created_by_fk FOREIGN KEY (created_by_identity_id) REFERENCES global."101_gov_identities"(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_015_exchange_rates gd_015_exchange_rates_rate_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 101_gov_identities gd_008_governance_identities_person_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_015_exchange_rates
-    ADD CONSTRAINT gd_015_exchange_rates_rate_code_fk FOREIGN KEY (rate_code) REFERENCES global.gd_018_rate_codes(rate_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."101_gov_identities"
+    ADD CONSTRAINT gd_008_governance_identities_person_fk FOREIGN KEY (person_id) REFERENCES global."002_core_people"(person_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_016_coa gd_016_coa_parent_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 203_fin_ruleset_lines gd_009_ruleset_lines_ruleset_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_016_coa
-    ADD CONSTRAINT gd_016_coa_parent_fk FOREIGN KEY (parent_account_code) REFERENCES global.gd_016_coa(account_code);
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
+    ADD CONSTRAINT gd_009_ruleset_lines_ruleset_fk FOREIGN KEY (ruleset_id) REFERENCES global."202_fin_rulesets"(ruleset_id);
 
 
 --
--- Name: gd_016_coa gd_016_coa_ruleset_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 402_ref_inflation_rates gd_014_inflation_rates_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_016_coa
-    ADD CONSTRAINT gd_016_coa_ruleset_fk FOREIGN KEY (ruleset_id) REFERENCES global.gd_003_ruleset_registry(ruleset_id);
+ALTER TABLE ONLY global."402_ref_inflation_rates"
+    ADD CONSTRAINT gd_014_inflation_rates_currency_fk FOREIGN KEY (currency_code) REFERENCES global."403_ref_currencies"(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_021_proposals gd_021_proposals_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 402_ref_inflation_rates gd_014_inflation_rates_rate_reference_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_021_proposals
-    ADD CONSTRAINT gd_021_proposals_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."402_ref_inflation_rates"
+    ADD CONSTRAINT gd_014_inflation_rates_rate_reference_fk FOREIGN KEY (rate_reference) REFERENCES global."404_ref_rate_sources"(rate_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_021_proposals gd_021_proposals_scenario_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 401_ref_exchange_rates gd_015_exchange_rates_base_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_021_proposals
-    ADD CONSTRAINT gd_021_proposals_scenario_fk FOREIGN KEY (scenario_id) REFERENCES global.gd_020_scenarios(scenario_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."401_ref_exchange_rates"
+    ADD CONSTRAINT gd_015_exchange_rates_base_currency_fk FOREIGN KEY (base_currency) REFERENCES global."403_ref_currencies"(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_021_proposals gd_021_proposals_superseded_by_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 401_ref_exchange_rates gd_015_exchange_rates_quote_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_021_proposals
-    ADD CONSTRAINT gd_021_proposals_superseded_by_fk FOREIGN KEY (superseded_by) REFERENCES global.gd_021_proposals(proposal_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."401_ref_exchange_rates"
+    ADD CONSTRAINT gd_015_exchange_rates_quote_currency_fk FOREIGN KEY (quote_currency) REFERENCES global."403_ref_currencies"(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_022_delegations gd_022_delegations_delegatee_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 401_ref_exchange_rates gd_015_exchange_rates_rate_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_022_delegations
-    ADD CONSTRAINT gd_022_delegations_delegatee_fk FOREIGN KEY (delegatee_id) REFERENCES global.gd_008_governance_identities(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."401_ref_exchange_rates"
+    ADD CONSTRAINT gd_015_exchange_rates_rate_code_fk FOREIGN KEY (rate_code) REFERENCES global."404_ref_rate_sources"(rate_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_022_delegations gd_022_delegations_delegator_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 201_fin_coa gd_016_coa_account_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_022_delegations
-    ADD CONSTRAINT gd_022_delegations_delegator_fk FOREIGN KEY (delegator_id) REFERENCES global.gd_008_governance_identities(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT gd_016_coa_account_type_fk FOREIGN KEY (account_type) REFERENCES global."409_ref_coa_account_types"(account_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_022_delegations gd_022_delegations_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 201_fin_coa gd_016_coa_parent_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_022_delegations
-    ADD CONSTRAINT gd_022_delegations_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT gd_016_coa_parent_fk FOREIGN KEY (parent_account_code) REFERENCES global."201_fin_coa"(account_code);
 
 
 --
--- Name: gd_025_projects gd_025_projects_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 102_gov_proposals gd_021_proposals_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_025_projects
-    ADD CONSTRAINT gd_025_projects_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."102_gov_proposals"
+    ADD CONSTRAINT gd_021_proposals_entity_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_025_projects gd_025_projects_owner_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 102_gov_proposals gd_021_proposals_scenario_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_025_projects
-    ADD CONSTRAINT gd_025_projects_owner_fk FOREIGN KEY (project_owner_id) REFERENCES global.gd_013_people(person_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."102_gov_proposals"
+    ADD CONSTRAINT gd_021_proposals_scenario_fk FOREIGN KEY (scenario_id) REFERENCES global."602_scen_scenarios"(scenario_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_arrangement_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 102_gov_proposals gd_021_proposals_superseded_by_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_arrangement_type_fk FOREIGN KEY (arrangement_type_code) REFERENCES global.gd_024_legal_arrangement_types(arrangement_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."102_gov_proposals"
+    ADD CONSTRAINT gd_021_proposals_superseded_by_fk FOREIGN KEY (superseded_by) REFERENCES global."102_gov_proposals"(proposal_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_currency_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 103_gov_delegations gd_022_delegations_delegatee_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_currency_fk FOREIGN KEY (pay_currency) REFERENCES global.gd_012_currency_registry(iso_alpha_3) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."103_gov_delegations"
+    ADD CONSTRAINT gd_022_delegations_delegatee_fk FOREIGN KEY (delegatee_id) REFERENCES global."101_gov_identities"(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 103_gov_delegations gd_022_delegations_delegator_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_entity_fk FOREIGN KEY (entity_id) REFERENCES global.gd_004_entities(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."103_gov_delegations"
+    ADD CONSTRAINT gd_022_delegations_delegator_fk FOREIGN KEY (delegator_id) REFERENCES global."101_gov_identities"(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_entity_position_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 103_gov_delegations gd_022_delegations_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_entity_position_fk FOREIGN KEY (entity_position_id) REFERENCES global.gd_027_positions(position_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."103_gov_delegations"
+    ADD CONSTRAINT gd_022_delegations_entity_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_person_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 501_hr_arrangements gd_026_tm_arrangement_type_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_person_fk FOREIGN KEY (person_id) REFERENCES global.gd_013_people(person_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."501_hr_arrangements"
+    ADD CONSTRAINT gd_026_tm_arrangement_type_fk FOREIGN KEY (arrangement_type_code) REFERENCES global."410_ref_arrangement_types"(arrangement_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_project_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 501_hr_arrangements gd_026_tm_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_project_fk FOREIGN KEY (project_id) REFERENCES global.gd_025_projects(project_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."501_hr_arrangements"
+    ADD CONSTRAINT gd_026_tm_entity_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_026_teammembers gd_026_tm_project_position_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 501_hr_arrangements gd_026_tm_person_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_026_teammembers
-    ADD CONSTRAINT gd_026_tm_project_position_fk FOREIGN KEY (project_position_id) REFERENCES global.gd_027_positions(position_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."501_hr_arrangements"
+    ADD CONSTRAINT gd_026_tm_person_fk FOREIGN KEY (person_id) REFERENCES global."002_core_people"(person_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
--- Name: gd_027_positions gd_027_positions_superior_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+-- Name: 501_hr_arrangements gd_026_tm_position_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
-ALTER TABLE ONLY global.gd_027_positions
-    ADD CONSTRAINT gd_027_positions_superior_fk FOREIGN KEY (position_superior_id, position_class) REFERENCES global.gd_027_positions(position_id, position_class) ON UPDATE RESTRICT ON DELETE RESTRICT;
+ALTER TABLE ONLY global."501_hr_arrangements"
+    ADD CONSTRAINT gd_026_tm_position_fk FOREIGN KEY (position_id) REFERENCES global."502_hr_positions"(position_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 501_hr_arrangements gd_026_tm_project_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."501_hr_arrangements"
+    ADD CONSTRAINT gd_026_tm_project_fk FOREIGN KEY (project_id) REFERENCES global."003_core_projects"(project_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 502_hr_positions gd_027_positions_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."502_hr_positions"
+    ADD CONSTRAINT gd_027_positions_entity_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 502_hr_positions gd_027_positions_project_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."502_hr_positions"
+    ADD CONSTRAINT gd_027_positions_project_fk FOREIGN KEY (project_id) REFERENCES global."003_core_projects"(project_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 601_scen_budgets gd_029_budgets_approved_by_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."601_scen_budgets"
+    ADD CONSTRAINT gd_029_budgets_approved_by_fk FOREIGN KEY (approved_by) REFERENCES global."101_gov_identities"(governance_identity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 601_scen_budgets gd_029_budgets_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."601_scen_budgets"
+    ADD CONSTRAINT gd_029_budgets_entity_fk FOREIGN KEY (entity_id) REFERENCES global."001_core_entities"(entity_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 601_scen_budgets gd_029_budgets_scenario_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."601_scen_budgets"
+    ADD CONSTRAINT gd_029_budgets_scenario_fk FOREIGN KEY (scenario_id) REFERENCES global."602_scen_scenarios"(scenario_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
+
+
+--
+-- Name: 601_scen_budgets gd_029_budgets_superseded_by_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."601_scen_budgets"
+    ADD CONSTRAINT gd_029_budgets_superseded_by_fk FOREIGN KEY (superseded_by_budget_id) REFERENCES global."601_scen_budgets"(budget_id) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
 -- PostgreSQL database dump complete
 --
 
-\unrestrict daO9t4x022D6ughrjumOorSZPgY8S4UD13NNiLh1Q14ZhVF1iYQkbL6BeqUFrnt
+\unrestrict D8e7LyC9Xzuccgt9tLK2dBqK7O9aAJC3KCyVTP3DmC3T4pJxlCOSy9ezKc7ydej
 
