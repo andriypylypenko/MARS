@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict D8e7LyC9Xzuccgt9tLK2dBqK7O9aAJC3KCyVTP3DmC3T4pJxlCOSy9ezKc7ydej
+\restrict YdyTBXigvyAV9axumfMrHAq1v3dB5bK1bwGlWXyUuFOPE72JjsbVXhNTopjTtof
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -18,6 +18,15 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: audit; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+CREATE SCHEMA audit;
+
+
+ALTER SCHEMA audit OWNER TO postgres;
 
 --
 -- Name: global; Type: SCHEMA; Schema: -; Owner: postgres
@@ -55,6 +64,52 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 
 COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
 
+
+--
+-- Name: fn_log_mutation(); Type: FUNCTION; Schema: audit; Owner: postgres
+--
+
+CREATE FUNCTION audit.fn_log_mutation() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    AS $$
+DECLARE
+    v_row_id          text;
+    v_identity_id     bigint;
+    v_identity_code   text;
+    v_pk_column       text := TG_ARGV[0];
+BEGIN
+    -- Read session identity
+    BEGIN
+        v_identity_id   := current_setting('mars.current_identity_id',   true)::bigint;
+    EXCEPTION WHEN OTHERS THEN
+        v_identity_id   := NULL;
+    END;
+
+    BEGIN
+        v_identity_code := current_setting('mars.current_identity_code', true);
+    EXCEPTION WHEN OTHERS THEN
+        v_identity_code := 'UNKNOWN';
+    END;
+
+    -- Extract PK value from affected row
+    IF TG_OP = 'DELETE' THEN
+        v_row_id := (row_to_json(OLD)::jsonb) ->> v_pk_column;
+    ELSE
+        v_row_id := (row_to_json(NEW)::jsonb) ->> v_pk_column;
+    END IF;
+
+    INSERT INTO audit.log
+        (table_name, row_id, action, performed_by_id, performed_by_code, performed_at)
+    VALUES
+        (TG_TABLE_NAME, v_row_id, TG_OP, v_identity_id, v_identity_code, now());
+
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION audit.fn_log_mutation() OWNER TO postgres;
 
 --
 -- Name: fn_is_entity_position(bigint); Type: FUNCTION; Schema: global; Owner: postgres
@@ -229,6 +284,38 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: log; Type: TABLE; Schema: audit; Owner: postgres
+--
+
+CREATE TABLE audit.log (
+    log_id bigint NOT NULL,
+    table_name text NOT NULL,
+    row_id text NOT NULL,
+    action text NOT NULL,
+    performed_by_id bigint,
+    performed_by_code text,
+    performed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT audit_log_action_chk CHECK ((action = ANY (ARRAY['INSERT'::text, 'UPDATE'::text, 'DELETE'::text])))
+);
+
+
+ALTER TABLE audit.log OWNER TO postgres;
+
+--
+-- Name: log_log_id_seq; Type: SEQUENCE; Schema: audit; Owner: postgres
+--
+
+ALTER TABLE audit.log ALTER COLUMN log_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME audit.log_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: 001_core_entities; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -243,8 +330,6 @@ CREATE TABLE global."001_core_entities" (
     legal_address text,
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_003_entities_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_003_entities_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_003_entities_created_at_not_null NOT NULL,
     CONSTRAINT gd_003_entities_identity_chk CHECK (((vat_id IS NOT NULL) OR (tax_id IS NOT NULL) OR (normalized_name IS NOT NULL))),
     CONSTRAINT gd_003_entities_valid_range_chk CHECK ((valid_to >= valid_from))
 );
@@ -330,20 +415,6 @@ COMMENT ON COLUMN global."001_core_entities".valid_to IS 'End of organizational 
 
 
 --
--- Name: COLUMN "001_core_entities".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."001_core_entities".created_by IS 'Infrastructure actor responsible for physical insertion of entity record.';
-
-
---
--- Name: COLUMN "001_core_entities".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."001_core_entities".created_at IS 'Physical insertion timestamp of entity record.';
-
-
---
 -- Name: 002_core_people; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -355,9 +426,7 @@ CREATE TABLE global."002_core_people" (
     last_name character varying(128) CONSTRAINT gd_007_people_last_name_not_null NOT NULL,
     tax_id character varying(128),
     date_of_birth date,
-    country_code character(2),
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_007_people_created_at_not_null NOT NULL
+    country_code character(2)
 );
 
 
@@ -427,20 +496,6 @@ COMMENT ON COLUMN global."002_core_people".country_code IS 'Canonical country co
 
 
 --
--- Name: COLUMN "002_core_people".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."002_core_people".created_by IS 'Infrastructure actor responsible for physical insertion of person record.';
-
-
---
--- Name: COLUMN "002_core_people".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."002_core_people".created_at IS 'Physical insertion timestamp of person record.';
-
-
---
 -- Name: 003_core_projects; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -452,8 +507,6 @@ CREATE TABLE global."003_core_projects" (
     description text,
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_025_projects_valid_from_nn NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_025_projects_valid_to_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_025_projects_created_at_nn NOT NULL,
     CONSTRAINT gd_025_projects_temporal_chk CHECK ((valid_from < valid_to))
 );
 
@@ -493,8 +546,6 @@ CREATE TABLE global."101_gov_identities" (
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_013_governance_identities_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_013_governance_identities_valid_to_not_null NOT NULL,
     identity_status character varying(32) CONSTRAINT gd_013_governance_identities_identity_status_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_013_governance_identities_created_at_not_null NOT NULL,
     identity_description text,
     created_by_identity_id bigint,
     person_id bigint,
@@ -538,7 +589,6 @@ CREATE TABLE global."102_gov_proposals" (
     reviewed_at timestamp with time zone,
     review_notes text,
     superseded_by bigint,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_021_proposals_created_at_nn NOT NULL,
     CONSTRAINT gd_021_proposals_proposal_status_chk CHECK ((proposal_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'superseded'::text, 'archived'::text]))),
     CONSTRAINT gd_021_proposals_proposal_type_chk CHECK ((proposal_type = ANY (ARRAY['corrective'::text, 'governance'::text, 'disclosure'::text, 'analytical'::text, 'operational'::text]))),
     CONSTRAINT gd_021_proposals_review_consistency_chk CHECK ((((reviewed_by IS NULL) AND (reviewed_at IS NULL)) OR ((reviewed_by IS NOT NULL) AND (reviewed_at IS NOT NULL)))),
@@ -661,8 +711,6 @@ CREATE TABLE global."103_gov_delegations" (
     revoked_at timestamp with time zone,
     revoked_by text,
     delegation_description text,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_022_delegations_created_at_nn NOT NULL,
     CONSTRAINT gd_022_delegations_revocation_consistency_chk CHECK ((((revoked_at IS NULL) AND (revoked_by IS NULL)) OR ((revoked_at IS NOT NULL) AND (revoked_by IS NOT NULL)))),
     CONSTRAINT gd_022_delegations_revocation_temporal_chk CHECK (((revoked_at IS NULL) OR (revoked_at >= valid_from))),
     CONSTRAINT gd_022_delegations_scope_chk CHECK ((delegation_scope = ANY (ARRAY['authoritative_commit'::text, 'replay_execution'::text, 'disclosure_authorization'::text, 'delegation_issuance'::text, 'escalation_handling'::text, 'scenario_execution'::text]))),
@@ -753,8 +801,6 @@ CREATE TABLE global."104_gov_commits" (
     committing_authority_id bigint CONSTRAINT gd_005_commit_records_committing_authority_id_not_null NOT NULL,
     commit_type character varying(64) CONSTRAINT gd_005_commit_records_commit_type_not_null NOT NULL,
     commit_reason text,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_005_commit_records_created_at_not_null NOT NULL,
     commit_status character varying(32) CONSTRAINT gd_005_commit_records_commit_status_not_null NOT NULL,
     CONSTRAINT gd_006_commit_records_commit_status_chk CHECK (global.fn_is_valid_commit_status(commit_status)),
     CONSTRAINT gd_006_commit_records_commit_timestamp_chk CHECK ((commit_timestamp >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
@@ -769,13 +815,13 @@ ALTER TABLE global."104_gov_commits" OWNER TO postgres;
 
 CREATE TABLE global."201_fin_coa" (
     account_code character varying(128) CONSTRAINT gd_016_coa_account_code_not_null NOT NULL,
-    parent_account_code character varying(128),
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_016_coa_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_016_coa_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_016_coa_created_at_not_null NOT NULL,
     account_type text,
     account_name text,
+    coa_id bigint NOT NULL,
+    coa_set_code character varying(64) DEFAULT 'internal_project_coa'::character varying NOT NULL,
+    parent_coa_id bigint,
     CONSTRAINT gd_016_coa_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
@@ -797,13 +843,6 @@ COMMENT ON COLUMN global."201_fin_coa".account_code IS 'Stable canonical account
 
 
 --
--- Name: COLUMN "201_fin_coa".parent_account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."201_fin_coa".parent_account_code IS 'Parent accounting topology element used for hierarchical reconstruction and aggregation.';
-
-
---
 -- Name: COLUMN "201_fin_coa".valid_from; Type: COMMENT; Schema: global; Owner: postgres
 --
 
@@ -815,20 +854,6 @@ COMMENT ON COLUMN global."201_fin_coa".valid_from IS 'Beginning of accounting to
 --
 
 COMMENT ON COLUMN global."201_fin_coa".valid_to IS 'End of accounting topology applicability interval.';
-
-
---
--- Name: COLUMN "201_fin_coa".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."201_fin_coa".created_by IS 'Infrastructure actor responsible for physical insertion of accounting topology record.';
-
-
---
--- Name: COLUMN "201_fin_coa".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."201_fin_coa".created_at IS 'Physical insertion timestamp of accounting topology record.';
 
 
 --
@@ -846,6 +871,20 @@ COMMENT ON COLUMN global."201_fin_coa".account_name IS 'Human-readable account l
 
 
 --
+-- Name: 201_fin_coa_coa_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."201_fin_coa" ALTER COLUMN coa_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME global."201_fin_coa_coa_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: 202_fin_rulesets; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -857,8 +896,6 @@ CREATE TABLE global."202_fin_rulesets" (
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_to_not_null NOT NULL,
     governance_scope_id bigint,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_008_ruleset_registry_created_at_not_null NOT NULL,
     CONSTRAINT gd_008_ruleset_registry_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
@@ -922,20 +959,6 @@ COMMENT ON COLUMN global."202_fin_rulesets".governance_scope_id IS 'Governance a
 
 
 --
--- Name: COLUMN "202_fin_rulesets".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."202_fin_rulesets".created_by IS 'Infrastructure actor responsible for physical Ruleset registration.';
-
-
---
--- Name: COLUMN "202_fin_rulesets".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."202_fin_rulesets".created_at IS 'Physical insertion timestamp of Ruleset registry record.';
-
-
---
 -- Name: 203_fin_ruleset_lines; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -948,10 +971,8 @@ CREATE TABLE global."203_fin_ruleset_lines" (
     amount numeric(20,6),
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_009_ruleset_lines_created_at_not_null NOT NULL,
     line_description text,
-    account_code character varying(128),
+    coa_id bigint,
     CONSTRAINT gd_009_ruleset_lines_transformation_direction_chk CHECK (((trf_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying, 'recognize'::character varying, 'derecognize'::character varying, 'transfer_in'::character varying, 'transfer_out'::character varying, 'debit'::character varying, 'credit'::character varying])::text[]))),
     CONSTRAINT gd_009_ruleset_lines_valid_range_chk CHECK ((valid_to >= valid_from))
 );
@@ -971,13 +992,6 @@ COMMENT ON COLUMN global."203_fin_ruleset_lines".entity_1_id IS 'Primary organiz
 --
 
 COMMENT ON COLUMN global."203_fin_ruleset_lines".entity_2_id IS 'Secondary organizational entity this Ruleset line applies to. Used for inter-entity rules such as intercompany transfers. Nullable. References gd_004_entities.entity_id.';
-
-
---
--- Name: COLUMN "203_fin_ruleset_lines".account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."203_fin_ruleset_lines".account_code IS 'Chart of Accounts identifier this Ruleset line applies to. Nullable — not all Ruleset lines are account-scoped. References gd_016_coa.account_code.';
 
 
 --
@@ -1031,16 +1045,14 @@ CREATE TABLE global."302_evt_primitive_transitions" (
     primitive_transition_id bigint CONSTRAINT gd_002_primitive_transitions_primitive_transition_id_not_null NOT NULL,
     event_id bigint CONSTRAINT gd_002_primitive_transitions_event_id_not_null NOT NULL,
     entity_id bigint CONSTRAINT gd_002_primitive_transitions_entity_id_not_null NOT NULL,
-    account_code character varying(128) CONSTRAINT gd_002_primitive_transitions_account_code_not_null NOT NULL,
     transformation_direction character varying(32) CONSTRAINT gd_002_primitive_transitions_transformation_direction_not_null NOT NULL,
     amount numeric(20,6) CONSTRAINT gd_002_primitive_transitions_amount_not_null NOT NULL,
     currency_code character(3),
     valid_time timestamp with time zone CONSTRAINT gd_002_primitive_transitions_valid_time_not_null NOT NULL,
     assertion_time timestamp with time zone CONSTRAINT gd_002_primitive_transitions_assertion_time_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_002_primitive_transitions_created_at_not_null NOT NULL,
     transition_description text,
     primitive_transition_type text CONSTRAINT gd_002_primitive_transitions_type_nn NOT NULL,
+    coa_id bigint NOT NULL,
     CONSTRAINT gd_002_primitive_transitions_amount_chk CHECK ((amount >= (0)::numeric)),
     CONSTRAINT gd_002_primitive_transitions_assertion_time_chk CHECK ((assertion_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone)),
     CONSTRAINT gd_002_primitive_transitions_direction_chk CHECK (((transformation_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying])::text[]))),
@@ -1079,13 +1091,6 @@ COMMENT ON COLUMN global."302_evt_primitive_transitions".entity_id IS 'Organizat
 
 
 --
--- Name: COLUMN "302_evt_primitive_transitions".account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."302_evt_primitive_transitions".account_code IS 'Accounting state topology element affected by primitive transition.';
-
-
---
 -- Name: COLUMN "302_evt_primitive_transitions".transformation_direction; Type: COMMENT; Schema: global; Owner: postgres
 --
 
@@ -1118,20 +1123,6 @@ COMMENT ON COLUMN global."302_evt_primitive_transitions".valid_time IS 'Business
 --
 
 COMMENT ON COLUMN global."302_evt_primitive_transitions".assertion_time IS 'Timestamp at which primitive transition became known to the system.';
-
-
---
--- Name: COLUMN "302_evt_primitive_transitions".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."302_evt_primitive_transitions".created_by IS 'Infrastructure actor responsible for physical insertion of primitive transition.';
-
-
---
--- Name: COLUMN "302_evt_primitive_transitions".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."302_evt_primitive_transitions".created_at IS 'Physical insertion timestamp of primitive transition.';
 
 
 --
@@ -1222,8 +1213,6 @@ CREATE TABLE global."402_ref_inflation_rates" (
     applicable_year integer CONSTRAINT gd_014_inflation_rates_applicable_year_nn NOT NULL,
     currency_code character(3) CONSTRAINT gd_014_inflation_rates_currency_code_nn NOT NULL,
     inflation_rate numeric(10,6) CONSTRAINT gd_014_inflation_rates_inflation_rate_nn NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_014_inflation_rates_created_at_nn NOT NULL,
     rate_reference character varying(128),
     CONSTRAINT gd_014_inflation_rates_rate_range_chk CHECK (((inflation_rate >= ('-100'::integer)::numeric) AND (inflation_rate <= (1000000)::numeric))),
     CONSTRAINT gd_014_inflation_rates_year_chk CHECK (((applicable_year >= 1900) AND (applicable_year <= 3000)))
@@ -1252,8 +1241,6 @@ CREATE TABLE global."403_ref_currencies" (
     issuing_jurisdiction character varying(128),
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_012_currency_registry_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_012_currency_registry_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_012_currency_registry_created_at_not_null NOT NULL,
     CONSTRAINT gd_012_currency_registry_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
@@ -1324,20 +1311,6 @@ COMMENT ON COLUMN global."403_ref_currencies".valid_to IS 'End of currency appli
 
 
 --
--- Name: COLUMN "403_ref_currencies".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."403_ref_currencies".created_by IS 'Infrastructure actor responsible for physical insertion of currency record.';
-
-
---
--- Name: COLUMN "403_ref_currencies".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."403_ref_currencies".created_at IS 'Physical insertion timestamp of currency record.';
-
-
---
 -- Name: 404_ref_rate_sources; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1363,9 +1336,7 @@ CREATE TABLE global."405_ref_names" (
     canonical_name character varying(256) CONSTRAINT gd_017_naming_conventions_canonical_name_not_null NOT NULL,
     translation_language character(2) CONSTRAINT gd_017_naming_conventions_translation_language_not_null NOT NULL,
     translated_name character varying(256) CONSTRAINT gd_017_naming_conventions_translated_name_not_null NOT NULL,
-    translation_context character varying(128),
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_017_naming_conventions_created_at_not_null NOT NULL
+    translation_context character varying(128)
 );
 
 
@@ -1425,20 +1396,6 @@ COMMENT ON COLUMN global."405_ref_names".translated_name IS 'Localized or transl
 --
 
 COMMENT ON COLUMN global."405_ref_names".translation_context IS 'Optional disclosure, legal or reporting context governing translation applicability.';
-
-
---
--- Name: COLUMN "405_ref_names".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."405_ref_names".created_by IS 'Infrastructure actor responsible for physical insertion of naming convention record.';
-
-
---
--- Name: COLUMN "405_ref_names".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."405_ref_names".created_at IS 'Physical insertion timestamp of naming convention record.';
 
 
 --
@@ -1576,9 +1533,7 @@ CREATE TABLE global."410_cal_holidays" (
     country_code character(2) CONSTRAINT gd_011_holidays_country_code_not_null NOT NULL,
     holiday_name character varying(256) CONSTRAINT gd_011_holidays_holiday_name_not_null NOT NULL,
     holiday_type character varying(64) CONSTRAINT gd_011_holidays_holiday_type_not_null NOT NULL,
-    holiday_date date CONSTRAINT gd_011_holidays_holiday_date_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_011_holidays_created_at_not_null NOT NULL
+    holiday_date date CONSTRAINT gd_011_holidays_holiday_date_not_null NOT NULL
 );
 
 
@@ -1627,20 +1582,6 @@ COMMENT ON COLUMN global."410_cal_holidays".holiday_date IS 'Calendar date on wh
 
 
 --
--- Name: COLUMN "410_cal_holidays".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."410_cal_holidays".created_by IS 'Infrastructure actor responsible for physical insertion of holiday record.';
-
-
---
--- Name: COLUMN "410_cal_holidays".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."410_cal_holidays".created_at IS 'Physical insertion timestamp of holiday record.';
-
-
---
 -- Name: 410_ref_arrangement_types; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1685,6 +1626,53 @@ COMMENT ON COLUMN global."410_ref_arrangement_types".jurisdiction_code IS 'ISO 3
 
 
 --
+-- Name: 411_ref_amortization_rates; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."411_ref_amortization_rates" (
+    rate_id bigint NOT NULL,
+    asset_category_code character varying(64) NOT NULL,
+    asset_category_name character varying(128) NOT NULL,
+    jurisdiction character(2),
+    rate_basis character varying(16) NOT NULL,
+    method character varying(32) NOT NULL,
+    min_useful_life_yrs numeric(5,2),
+    max_useful_life_yrs numeric(5,2),
+    annual_rate_pct numeric(8,4) NOT NULL,
+    legal_basis text,
+    notes text,
+    valid_from date DEFAULT '1901-01-01'::date NOT NULL,
+    valid_to date DEFAULT '3001-12-31'::date NOT NULL,
+    CONSTRAINT chk_method CHECK (((method)::text = ANY ((ARRAY['straight_line'::character varying, 'declining_balance'::character varying, 'units_of_production'::character varying])::text[]))),
+    CONSTRAINT chk_rate_basis CHECK (((rate_basis)::text = ANY ((ARRAY['tax'::character varying, 'ifrs'::character varying])::text[]))),
+    CONSTRAINT chk_rate_pos CHECK ((annual_rate_pct > (0)::numeric))
+);
+
+
+ALTER TABLE global."411_ref_amortization_rates" OWNER TO postgres;
+
+--
+-- Name: TABLE "411_ref_amortization_rates"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."411_ref_amortization_rates" IS 'Statutory and IFRS depreciation/amortization rate reference. jurisdiction NULL = universal IFRS guidance. rate_basis: tax = statutory minimum for CIT purposes; ifrs = IFRS economic useful life guidance. annual_rate_pct = 100 / useful_life_years for straight-line.';
+
+
+--
+-- Name: 411_ref_amortization_rates_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."411_ref_amortization_rates" ALTER COLUMN rate_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME global."411_ref_amortization_rates_rate_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: 501_hr_arrangements; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1701,8 +1689,6 @@ CREATE TABLE global."501_hr_arrangements" (
     pay_currency character(3),
     pay_unit text,
     pay_amount numeric,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_026_tm_created_at_nn NOT NULL,
     CONSTRAINT gd_026_tm_allocation_chk CHECK (((time_allocation > (0)::numeric) AND (time_allocation <= 1.0))),
     CONSTRAINT gd_026_tm_pay_unit_chk CHECK ((pay_unit = ANY (ARRAY['hour'::text, 'day'::text, 'month'::text, 'year'::text, 'delivery'::text]))),
     CONSTRAINT gd_026_tm_payment_consistency_chk CHECK ((((pay_currency IS NULL) AND (pay_unit IS NULL) AND (pay_amount IS NULL)) OR ((pay_currency IS NOT NULL) AND (pay_unit IS NOT NULL) AND (pay_amount IS NOT NULL)))),
@@ -1752,8 +1738,6 @@ CREATE TABLE global."502_hr_positions" (
     position_description text,
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_027_positions_valid_from_nn NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_027_positions_valid_to_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_027_positions_created_at_nn NOT NULL,
     project_id bigint,
     entity_id bigint,
     CONSTRAINT gd_027_positions_class_chk CHECK ((position_class = ANY (ARRAY['statutory'::text, 'operational'::text]))),
@@ -1823,8 +1807,6 @@ CREATE TABLE global."601_scen_budgets" (
     approved_by bigint,
     approved_at timestamp with time zone,
     superseded_by_budget_id bigint,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_029_budgets_created_at_nn NOT NULL,
     CONSTRAINT gd_029_budgets_approval_consistency_chk CHECK ((((approved_by IS NULL) AND (approved_at IS NULL)) OR ((approved_by IS NOT NULL) AND (approved_at IS NOT NULL)))),
     CONSTRAINT gd_029_budgets_no_self_supersession_chk CHECK (((superseded_by_budget_id IS NULL) OR (superseded_by_budget_id <> budget_id))),
     CONSTRAINT gd_029_budgets_period_chk CHECK ((period_from < period_to)),
@@ -1892,8 +1874,6 @@ CREATE TABLE global."602_scen_scenarios" (
     scenario_name text CONSTRAINT gd_020_scenarios_scenario_name_nn NOT NULL,
     scenario_description text,
     base_date date CONSTRAINT gd_020_scenarios_base_date_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_020_scenarios_created_at_nn NOT NULL,
     scenario_type text DEFAULT 'projection'::text CONSTRAINT gd_020_scenarios_type_nn NOT NULL,
     scenario_status character varying(32) DEFAULT 'draft'::character varying CONSTRAINT gd_020_scenarios_status_nn NOT NULL,
     CONSTRAINT gd_020_scenarios_status_chk CHECK (global.fn_is_valid_scenario_status(scenario_status)),
@@ -1936,20 +1916,6 @@ COMMENT ON COLUMN global."602_scen_scenarios".scenario_description IS 'Narrative
 --
 
 COMMENT ON COLUMN global."602_scen_scenarios".base_date IS 'Temporal anchor from which this scenario projects forward. All hypothetical values tagged to this scenario must have applicable periods strictly after base_date.';
-
-
---
--- Name: COLUMN "602_scen_scenarios".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."602_scen_scenarios".created_by IS 'Actor who defined this scenario.';
-
-
---
--- Name: COLUMN "602_scen_scenarios".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."602_scen_scenarios".created_at IS 'Physical insertion timestamp of this scenario header.';
 
 
 --
@@ -2401,13 +2367,373 @@ ALTER TABLE ONLY global."410_cal_holidays" ALTER COLUMN holiday_id SET DEFAULT n
 
 
 --
+-- Data for Name: log; Type: TABLE DATA; Schema: audit; Owner: postgres
+--
+
+COPY audit.log (log_id, table_name, row_id, action, performed_by_id, performed_by_code, performed_at) FROM stdin;
+1	001_core_entities	1	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
+2	001_core_entities	2	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
+3	001_core_entities	3	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
+4	002_core_people	1	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+5	002_core_people	2	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+6	002_core_people	3	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+7	002_core_people	4	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+8	002_core_people	5	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+9	002_core_people	6	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+10	002_core_people	7	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+11	002_core_people	8	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+12	002_core_people	9	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+13	002_core_people	10	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+14	002_core_people	11	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+15	002_core_people	12	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+16	002_core_people	13	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+17	002_core_people	14	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+18	002_core_people	15	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+19	002_core_people	16	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+20	002_core_people	17	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+21	002_core_people	18	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+22	002_core_people	19	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+23	002_core_people	20	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+24	002_core_people	21	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
+25	002_core_people	22	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
+26	002_core_people	23	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
+27	002_core_people	24	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
+28	002_core_people	25	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+29	002_core_people	26	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+30	002_core_people	27	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+31	002_core_people	28	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+32	002_core_people	29	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+33	002_core_people	30	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+34	002_core_people	31	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
+35	002_core_people	32	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+36	002_core_people	33	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+37	002_core_people	34	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+38	002_core_people	35	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+39	002_core_people	36	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+40	002_core_people	37	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+41	002_core_people	38	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+42	002_core_people	39	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+43	002_core_people	40	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+44	002_core_people	41	INSERT	\N	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+45	201_fin_coa	acc_231001	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+46	201_fin_coa	acc_231002	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+47	201_fin_coa	acc_231003	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+48	201_fin_coa	acc_231004	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+49	201_fin_coa	acc_231005	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+50	201_fin_coa	acc_231006	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+51	201_fin_coa	acc_231007	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+52	201_fin_coa	acc_231008	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+53	201_fin_coa	acc_231009	INSERT	\N	\N	2026-05-30 12:16:45.967016+03
+54	001_core_entities	1	UPDATE	\N	\N	2026-05-30 14:09:49.792529+03
+55	001_core_entities	2	UPDATE	\N	\N	2026-05-30 14:09:49.792529+03
+56	001_core_entities	3	UPDATE	\N	\N	2026-05-30 14:09:49.792529+03
+1037	201_fin_coa	bacc_10	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1038	201_fin_coa	bacc_20	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1039	201_fin_coa	bacc_30	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1040	201_fin_coa	bacc_40	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1041	201_fin_coa	bacc_50	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1042	201_fin_coa	bacc_100	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1043	201_fin_coa	bacc_101	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1044	201_fin_coa	bacc_102	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1045	201_fin_coa	bacc_200	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1046	201_fin_coa	bacc_201	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1047	201_fin_coa	bacc_202	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1048	201_fin_coa	bacc_203	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1049	201_fin_coa	bacc_204	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1050	201_fin_coa	bacc_205	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1051	201_fin_coa	bacc_206	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1052	201_fin_coa	bacc_207	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1053	201_fin_coa	bacc_208	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1054	201_fin_coa	bacc_209	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1055	201_fin_coa	bacc_210	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1056	201_fin_coa	bacc_400	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1057	201_fin_coa	bacc_401	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1058	201_fin_coa	bacc_402	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1059	201_fin_coa	bacc_403	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1060	201_fin_coa	bacc_404	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1061	201_fin_coa	bacc_405	INSERT	\N	\N	2026-05-31 13:20:36.624824+03
+1062	201_fin_coa	cacc_10	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1063	201_fin_coa	cacc_20	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1064	201_fin_coa	cacc_30	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1065	201_fin_coa	cacc_40	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1066	201_fin_coa	cacc_50	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1067	201_fin_coa	cacc_60	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1068	201_fin_coa	cacc_100	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1069	201_fin_coa	cacc_101	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1070	201_fin_coa	cacc_102	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1071	201_fin_coa	cacc_103	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1072	201_fin_coa	cacc_104	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1073	201_fin_coa	cacc_105	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1074	201_fin_coa	cacc_106	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1075	201_fin_coa	cacc_107	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1076	201_fin_coa	cacc_108	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1077	201_fin_coa	cacc_109	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1078	201_fin_coa	cacc_199	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1079	201_fin_coa	cacc_200	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1080	201_fin_coa	cacc_201	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1081	201_fin_coa	cacc_202	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1082	201_fin_coa	cacc_299	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1083	201_fin_coa	cacc_300	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1084	201_fin_coa	cacc_301	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1085	201_fin_coa	cacc_302	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1086	201_fin_coa	cacc_303	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+1087	201_fin_coa	cacc_399	INSERT	\N	\N	2026-05-31 14:49:45.243367+03
+792	201_fin_coa	acc_1	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+793	201_fin_coa	acc_2	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+794	201_fin_coa	acc_3	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+795	201_fin_coa	acc_4	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+796	201_fin_coa	acc_5	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+797	201_fin_coa	acc_6	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+798	201_fin_coa	acc_7	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+799	201_fin_coa	acc_8	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+800	201_fin_coa	acc_9	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+801	201_fin_coa	acc_10	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+802	201_fin_coa	acc_11	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+803	201_fin_coa	acc_12	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+804	201_fin_coa	acc_13	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+805	201_fin_coa	acc_14	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+806	201_fin_coa	acc_20	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+807	201_fin_coa	acc_21	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+808	201_fin_coa	acc_22	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+809	201_fin_coa	acc_23	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+810	201_fin_coa	acc_24	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+811	201_fin_coa	acc_30	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+812	201_fin_coa	acc_31	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+813	201_fin_coa	acc_32	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+814	201_fin_coa	acc_40	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+815	201_fin_coa	acc_41	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+816	201_fin_coa	acc_42	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+817	201_fin_coa	acc_50	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+818	201_fin_coa	acc_51	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+819	201_fin_coa	acc_52	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+820	201_fin_coa	acc_53	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+821	201_fin_coa	acc_60	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+822	201_fin_coa	acc_61	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+823	201_fin_coa	acc_70	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+824	201_fin_coa	acc_71	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+825	201_fin_coa	acc_80	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+826	201_fin_coa	acc_81	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+827	201_fin_coa	acc_82	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+828	201_fin_coa	acc_83	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+829	201_fin_coa	acc_90	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+830	201_fin_coa	acc_91	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+831	201_fin_coa	acc_99	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+832	201_fin_coa	acc_1000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+833	201_fin_coa	acc_1010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+834	201_fin_coa	acc_1020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+835	201_fin_coa	acc_1030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+836	201_fin_coa	acc_1040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+837	201_fin_coa	acc_1050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+838	201_fin_coa	acc_1060	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+839	201_fin_coa	acc_1070	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+840	201_fin_coa	acc_1080	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+841	201_fin_coa	acc_1090	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+842	201_fin_coa	acc_1100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+843	201_fin_coa	acc_1110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+844	201_fin_coa	acc_1120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+845	201_fin_coa	acc_1130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+846	201_fin_coa	acc_1140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+847	201_fin_coa	acc_1150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+848	201_fin_coa	acc_1160	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+849	201_fin_coa	acc_1170	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+850	201_fin_coa	acc_1180	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+851	201_fin_coa	acc_1190	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+852	201_fin_coa	acc_1200	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+853	201_fin_coa	acc_1210	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+854	201_fin_coa	acc_1220	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+855	201_fin_coa	acc_1300	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+856	201_fin_coa	acc_1310	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+857	201_fin_coa	acc_1320	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+858	201_fin_coa	acc_1330	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+859	201_fin_coa	acc_1340	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+860	201_fin_coa	acc_1350	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+861	201_fin_coa	acc_1360	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+862	201_fin_coa	acc_1370	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+863	201_fin_coa	acc_1380	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+864	201_fin_coa	acc_1400	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+865	201_fin_coa	acc_1410	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+866	201_fin_coa	acc_1420	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+867	201_fin_coa	acc_1430	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+868	201_fin_coa	acc_2000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+869	201_fin_coa	acc_2010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+870	201_fin_coa	acc_2020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+871	201_fin_coa	acc_2030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+872	201_fin_coa	acc_2040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+873	201_fin_coa	acc_2050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+874	201_fin_coa	acc_2060	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+875	201_fin_coa	acc_2100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+876	201_fin_coa	acc_2110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+877	201_fin_coa	acc_2120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+878	201_fin_coa	acc_2130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+879	201_fin_coa	acc_2140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+880	201_fin_coa	acc_2150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+881	201_fin_coa	acc_2160	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+882	201_fin_coa	acc_2170	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+883	201_fin_coa	acc_2180	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+884	201_fin_coa	acc_2200	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+885	201_fin_coa	acc_2210	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+886	201_fin_coa	acc_2220	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+887	201_fin_coa	acc_2230	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+888	201_fin_coa	acc_2300	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+889	201_fin_coa	acc_2310	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+890	201_fin_coa	acc_2320	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+891	201_fin_coa	acc_2330	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+892	201_fin_coa	acc_2340	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+893	201_fin_coa	acc_2350	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+894	201_fin_coa	acc_2360	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+895	201_fin_coa	acc_2370	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+896	201_fin_coa	acc_2400	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+897	201_fin_coa	acc_2410	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+898	201_fin_coa	acc_2420	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+899	201_fin_coa	acc_2430	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+900	201_fin_coa	acc_2440	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+901	201_fin_coa	acc_3000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+902	201_fin_coa	acc_3010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+903	201_fin_coa	acc_3020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+904	201_fin_coa	acc_3030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+905	201_fin_coa	acc_3040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+906	201_fin_coa	acc_3100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+907	201_fin_coa	acc_3110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+908	201_fin_coa	acc_3120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+909	201_fin_coa	acc_3130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+910	201_fin_coa	acc_3140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+911	201_fin_coa	acc_3150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+912	201_fin_coa	acc_3200	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+913	201_fin_coa	acc_3210	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+914	201_fin_coa	acc_3220	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+915	201_fin_coa	acc_3230	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+916	201_fin_coa	acc_4000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+917	201_fin_coa	acc_4010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+918	201_fin_coa	acc_4020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+919	201_fin_coa	acc_4030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+920	201_fin_coa	acc_4040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+921	201_fin_coa	acc_4050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+922	201_fin_coa	acc_4100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+923	201_fin_coa	acc_4110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+924	201_fin_coa	acc_4120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+925	201_fin_coa	acc_4130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+926	201_fin_coa	acc_4140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+927	201_fin_coa	acc_4150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+928	201_fin_coa	acc_4200	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+929	201_fin_coa	acc_4210	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+930	201_fin_coa	acc_4220	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+931	201_fin_coa	acc_4230	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+932	201_fin_coa	acc_5000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+933	201_fin_coa	acc_5010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+934	201_fin_coa	acc_5020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+935	201_fin_coa	acc_5030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+936	201_fin_coa	acc_5040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+937	201_fin_coa	acc_5050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+938	201_fin_coa	acc_5060	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+939	201_fin_coa	acc_5070	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+940	201_fin_coa	acc_5080	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+941	201_fin_coa	acc_5090	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+942	201_fin_coa	acc_5100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+943	201_fin_coa	acc_5110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+944	201_fin_coa	acc_5120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+945	201_fin_coa	acc_5130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+946	201_fin_coa	acc_5140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+947	201_fin_coa	acc_5200	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+948	201_fin_coa	acc_5210	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+949	201_fin_coa	acc_5220	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+950	201_fin_coa	acc_5230	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+951	201_fin_coa	acc_5300	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+952	201_fin_coa	acc_5310	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+953	201_fin_coa	acc_5320	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+954	201_fin_coa	acc_5330	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+955	201_fin_coa	acc_5340	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+956	201_fin_coa	acc_6000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+957	201_fin_coa	acc_6010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+958	201_fin_coa	acc_6020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+959	201_fin_coa	acc_6030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+960	201_fin_coa	acc_6040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+961	201_fin_coa	acc_6050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+962	201_fin_coa	acc_6060	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+963	201_fin_coa	acc_6070	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+964	201_fin_coa	acc_6080	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+965	201_fin_coa	acc_6100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+966	201_fin_coa	acc_6110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+967	201_fin_coa	acc_6120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+968	201_fin_coa	acc_6130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+969	201_fin_coa	acc_6140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+970	201_fin_coa	acc_6150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+971	201_fin_coa	acc_6160	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+972	201_fin_coa	acc_7000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+973	201_fin_coa	acc_7010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+974	201_fin_coa	acc_7020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+975	201_fin_coa	acc_7030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+976	201_fin_coa	acc_7040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+977	201_fin_coa	acc_7050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+978	201_fin_coa	acc_7060	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+979	201_fin_coa	acc_7100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+980	201_fin_coa	acc_7110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+981	201_fin_coa	acc_7120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+982	201_fin_coa	acc_7130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+983	201_fin_coa	acc_7140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+984	201_fin_coa	acc_7150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+985	201_fin_coa	acc_8000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+986	201_fin_coa	acc_8010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+987	201_fin_coa	acc_8020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+988	201_fin_coa	acc_8030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+989	201_fin_coa	acc_8040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+990	201_fin_coa	acc_8050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+991	201_fin_coa	acc_8100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+992	201_fin_coa	acc_8110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+993	201_fin_coa	acc_8120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+994	201_fin_coa	acc_8130	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+995	201_fin_coa	acc_8140	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+996	201_fin_coa	acc_8150	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+997	201_fin_coa	acc_8160	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+998	201_fin_coa	acc_8170	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+999	201_fin_coa	acc_8180	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1000	201_fin_coa	acc_8190	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1001	201_fin_coa	acc_8200	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1002	201_fin_coa	acc_8210	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1003	201_fin_coa	acc_8220	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1004	201_fin_coa	acc_8230	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1005	201_fin_coa	acc_8240	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1006	201_fin_coa	acc_8300	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1007	201_fin_coa	acc_8310	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1008	201_fin_coa	acc_8320	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1009	201_fin_coa	acc_8330	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1010	201_fin_coa	acc_8340	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1011	201_fin_coa	acc_8350	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1012	201_fin_coa	acc_9000	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1013	201_fin_coa	acc_9010	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1014	201_fin_coa	acc_9020	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1015	201_fin_coa	acc_9030	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1016	201_fin_coa	acc_9040	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1017	201_fin_coa	acc_9050	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1018	201_fin_coa	acc_9060	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1019	201_fin_coa	acc_9100	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1020	201_fin_coa	acc_9110	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1021	201_fin_coa	acc_9120	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1022	201_fin_coa	acc_9900	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1023	201_fin_coa	acc_9910	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1024	201_fin_coa	acc_9920	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1025	201_fin_coa	acc_9930	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1026	201_fin_coa	acc_9940	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1027	201_fin_coa	acc_9950	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1028	201_fin_coa	acc_231001	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1029	201_fin_coa	acc_231002	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1030	201_fin_coa	acc_231003	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1031	201_fin_coa	acc_231004	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1032	201_fin_coa	acc_231005	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1033	201_fin_coa	acc_231006	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1034	201_fin_coa	acc_231007	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1035	201_fin_coa	acc_231008	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+1036	201_fin_coa	acc_231009	UPDATE	\N	\N	2026-05-31 11:58:26.330015+03
+\.
+
+
+--
 -- Data for Name: 001_core_entities; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."001_core_entities" (entity_id, entity_reg_number, country_code, legal_name, normalized_name, tax_id, vat_id, legal_address, valid_from, valid_to, created_by, created_at) FROM stdin;
-1	UA-12345678	UA	TOV Alpha	tov alpha	12345678	UA123456789012	01001, Ukraine, Kyiv, Khreshchatyk Street 1	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
-2	LT-123456789	LT	UAB Beta	uab beta	123456789	LT123456789	Gedimino pr. 1, LT-01103 Vilnius, Lithuania	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
-3	PL-0000123456	PL	Gamma Sp. z o.o.	gamma sp z o o	1234567890	PL1234567890	ul. Marszalkowska 1, 00-001 Warszawa, Poland	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:21:51.56121+03
+COPY global."001_core_entities" (entity_id, entity_reg_number, country_code, legal_name, normalized_name, tax_id, vat_id, legal_address, valid_from, valid_to) FROM stdin;
+1	45681274	UA	ТОВ «Гамма Технолоджіс»	GAMMA TECHNOLOGIES LLC	456812722089	UA123456789012	01001, Ukraine, Kyiv, Khreshchatyk Street 1	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02
+2	306542187	LT	Betta UAB	Betta UAB	LT100017524315	LT123456789	Gedimino pr. 1, LT-01103 Vilnius, Lithuania	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02
+3	0001047821	PL	Alfa Systems Spółka z ograniczoną odpowiedzialnością	Alfa Systems Sp. z o.o.	5273028471	PL5273028471	ul. Marszalkowska 1, 00-001 Warszawa, Poland	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02
 \.
 
 
@@ -2415,48 +2741,48 @@ COPY global."001_core_entities" (entity_id, entity_reg_number, country_code, leg
 -- Data for Name: 002_core_people; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."002_core_people" (person_id, person_code, first_name, middle_name, last_name, tax_id, date_of_birth, country_code, created_by, created_at) FROM stdin;
-1	P010001	Andriy	L	Pylypenko	320491093	1984-05-26	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-2	P123103	Lukas	Andrej	Petraitis	LT483920174	1987-03-14	LT	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-3	P304294	Marta	Elena	Kovalenko	UA927154803	1992-11-02	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-4	P420001	Tomas	Jiri	Novak	CZ615840293	1979-07-21	CZ	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-5	P460001	Sofia	Marie	Lindholm	SE384729165	1995-01-30	SE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-6	P359001	Ivan	Petrov	Sokolov	BG508317624	1984-09-18	BG	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-7	P480001	Anna	Katarzyna	Zielinska	PL764210985	1990-06-11	PL	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-8	P450001	Erik	Johan	Hansen	DK390518274	1976-12-05	DK	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-9	P380001	Olena	Mykhailivna	Bondarenko	UA118640572	1988-04-27	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-10	P421001	David	Marek	Horvath	SK905723184	1993-10-16	SK	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-11	P358001	Laura	Ingrid	Nieminen	FI247819536	1981-02-09	FI	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-12	P380002	Petro	Ivanovych	Melnyk	UA672901458	1974-08-25	UA	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-13	P480002	Emilia	Teresa	Nowak	PL153487620	1998-05-03	PL	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-14	P490001	Karl	Friedrich	Bauer	DE482761905	1985-11-14	DE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-15	P372001	Natalia	Sergeyevna	Orlova	EE817263540	1991-01-19	EE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-16	P385001	Marko	Ante	Kovacic	HR360915742	1980-07-08	HR	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-17	P407001	Elena	Ioana	Popescu	RO274150983	1996-09-22	RO	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-18	P370001	Jonas	Petras	Kazlauskas	LT591742836	1983-03-31	LT	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-19	P359002	Vera	Milena	Dimitrova	BG845390217	1978-12-17	BG	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-20	P407002	Mihai	Alexandru	Ionescu	RO713629458	1989-06-28	RO	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-21	P372002	Kristina	Anne	Saar	EE294718650	1994-10-07	EE	SYSTEM_BOOTSTRAP	2026-05-25 07:55:59.356836+03
-22	P506695	Mantas	Jonas	Kazlauskas	LT38907151234	1989-07-15	LT	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
-23	P209345	Gabija	Rūta	Jankauskaite	LT49503184567	1995-03-18	LT	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
-24	P399405	Tomas	Antanas	Petrauskas	LT38211239876	1982-11-23	LT	SYSTEM_BOOTSTRAP	2026-05-26 07:47:47.482608+03
-25	P309409	Ieva	Lina	Vaitkutė	LT6010521349	1991-05-21	LT	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-26	P329949	Lukas	Darius	Žemaitis	LT3910902765	1991-09-02	LT	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-27	P299304	Oleksandr	Ivanovych	Shevchenko	UA2910415236	1991-04-15	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-28	P487598	Iryna	Petrovna	Kovalchuk	UA2961127845	1996-11-27	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-29	P219839	Dmytro	Mykolayovych	Bondarenko	UA2880721364	1988-07-21	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-30	P393420	Tetiana	Serhiivna	Melnyk	UA3020319457	2002-03-19	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-31	P597698	Andrii	Olehovych	Tkachenko	UA2940906581	1994-09-06	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:05:14.401399+03
-32	P304902	Yuliia	Andriivna	Savchenko	UA2990512743	1999-05-12	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-33	P293190	Maksym	Volodymyrovych	Hrytsenko	UA2930826415	1993-08-26	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-34	P239012	Anastasiia	Oleksiivna	Marchenko	UA3011209584	2001-12-09	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-35	P124902	Viktor	Stepanovych	Kravchenko	UA2860417352	1986-04-17	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-36	P498394	Sofiia	Mykhailivna	Lysenko	UA3040218467	2004-02-18	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-37	P574875	Artem	Serhiiovych	Polishchuk	UA2951013628	1995-10-13	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-38	P289423	Nataliia	Ivanivna	Romaniuk	UA2900705241	1990-07-05	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-39	P249023	Bohdan	Petrovych	Taran	UA2970314896	1997-03-14	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-40	P567482	Kateryna	Romanivna	Zadorozhna	UA3000912754	2000-09-12	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
-41	P327482	Yaroslav	Dmytrovych	Klymenko	UA2920618347	1992-06-18	UA	SYSTEM_BOOTSTRAP	2026-05-26 12:38:02.098806+03
+COPY global."002_core_people" (person_id, person_code, first_name, middle_name, last_name, tax_id, date_of_birth, country_code) FROM stdin;
+1	P010001	Andriy	L	Pylypenko	320491093	1984-05-26	UA
+2	P123103	Lukas	Andrej	Petraitis	LT483920174	1987-03-14	LT
+3	P304294	Marta	Elena	Kovalenko	UA927154803	1992-11-02	UA
+4	P420001	Tomas	Jiri	Novak	CZ615840293	1979-07-21	CZ
+5	P460001	Sofia	Marie	Lindholm	SE384729165	1995-01-30	SE
+6	P359001	Ivan	Petrov	Sokolov	BG508317624	1984-09-18	BG
+7	P480001	Anna	Katarzyna	Zielinska	PL764210985	1990-06-11	PL
+8	P450001	Erik	Johan	Hansen	DK390518274	1976-12-05	DK
+9	P380001	Olena	Mykhailivna	Bondarenko	UA118640572	1988-04-27	UA
+10	P421001	David	Marek	Horvath	SK905723184	1993-10-16	SK
+11	P358001	Laura	Ingrid	Nieminen	FI247819536	1981-02-09	FI
+12	P380002	Petro	Ivanovych	Melnyk	UA672901458	1974-08-25	UA
+13	P480002	Emilia	Teresa	Nowak	PL153487620	1998-05-03	PL
+14	P490001	Karl	Friedrich	Bauer	DE482761905	1985-11-14	DE
+15	P372001	Natalia	Sergeyevna	Orlova	EE817263540	1991-01-19	EE
+16	P385001	Marko	Ante	Kovacic	HR360915742	1980-07-08	HR
+17	P407001	Elena	Ioana	Popescu	RO274150983	1996-09-22	RO
+18	P370001	Jonas	Petras	Kazlauskas	LT591742836	1983-03-31	LT
+19	P359002	Vera	Milena	Dimitrova	BG845390217	1978-12-17	BG
+20	P407002	Mihai	Alexandru	Ionescu	RO713629458	1989-06-28	RO
+21	P372002	Kristina	Anne	Saar	EE294718650	1994-10-07	EE
+22	P506695	Mantas	Jonas	Kazlauskas	LT38907151234	1989-07-15	LT
+23	P209345	Gabija	Rūta	Jankauskaite	LT49503184567	1995-03-18	LT
+24	P399405	Tomas	Antanas	Petrauskas	LT38211239876	1982-11-23	LT
+25	P309409	Ieva	Lina	Vaitkutė	LT6010521349	1991-05-21	LT
+26	P329949	Lukas	Darius	Žemaitis	LT3910902765	1991-09-02	LT
+27	P299304	Oleksandr	Ivanovych	Shevchenko	UA2910415236	1991-04-15	UA
+28	P487598	Iryna	Petrovna	Kovalchuk	UA2961127845	1996-11-27	UA
+29	P219839	Dmytro	Mykolayovych	Bondarenko	UA2880721364	1988-07-21	UA
+30	P393420	Tetiana	Serhiivna	Melnyk	UA3020319457	2002-03-19	UA
+31	P597698	Andrii	Olehovych	Tkachenko	UA2940906581	1994-09-06	UA
+32	P304902	Yuliia	Andriivna	Savchenko	UA2990512743	1999-05-12	UA
+33	P293190	Maksym	Volodymyrovych	Hrytsenko	UA2930826415	1993-08-26	UA
+34	P239012	Anastasiia	Oleksiivna	Marchenko	UA3011209584	2001-12-09	UA
+35	P124902	Viktor	Stepanovych	Kravchenko	UA2860417352	1986-04-17	UA
+36	P498394	Sofiia	Mykhailivna	Lysenko	UA3040218467	2004-02-18	UA
+37	P574875	Artem	Serhiiovych	Polishchuk	UA2951013628	1995-10-13	UA
+38	P289423	Nataliia	Ivanivna	Romaniuk	UA2900705241	1990-07-05	UA
+39	P249023	Bohdan	Petrovych	Taran	UA2970314896	1997-03-14	UA
+40	P567482	Kateryna	Romanivna	Zadorozhna	UA3000912754	2000-09-12	UA
+41	P327482	Yaroslav	Dmytrovych	Klymenko	UA2920618347	1992-06-18	UA
 \.
 
 
@@ -2464,10 +2790,10 @@ COPY global."002_core_people" (person_id, person_code, first_name, middle_name, 
 -- Data for Name: 003_core_projects; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."003_core_projects" (project_id, project_code, project_name, project_owner_arrangement_id, description, valid_from, valid_to, created_by, created_at) FROM stdin;
-1	PR0001	Heavy Delivery System	\N	Project aimed at creation of load delivery vehicle of large size.	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:17:04.063227+03
-2	PR0002	Light Delivery System	\N	Project aimed at creation of load delivery vehicle of small size.	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:17:04.063227+03
-3	PR0003	Garden Control Device	\N	Project aimed at creation of garden protection device.	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 09:17:04.063227+03
+COPY global."003_core_projects" (project_id, project_code, project_name, project_owner_arrangement_id, description, valid_from, valid_to) FROM stdin;
+1	PR0001	Heavy Delivery System	\N	Project aimed at creation of load delivery vehicle of large size.	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02
+2	PR0002	Light Delivery System	\N	Project aimed at creation of load delivery vehicle of small size.	2026-05-25 03:00:00+03	3001-12-31 02:00:00+02
+3	PR0003	Garden Control Device	\N	Project aimed at creation of garden protection device.	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02
 \.
 
 
@@ -2475,10 +2801,10 @@ COPY global."003_core_projects" (project_id, project_code, project_name, project
 -- Data for Name: 101_gov_identities; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."101_gov_identities" (governance_identity_id, identity_type, identity_name, identity_code, valid_from, valid_to, identity_status, created_by, created_at, identity_description, created_by_identity_id, person_id) FROM stdin;
-4	human_controller	Andriy Pylypenko	P010001	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	SYSTEM_BOOTSTRAP	2026-05-25 08:00:18.875129+03	Genesis Human Controller. Organizational trust anchor.	\N	1
-5	human_controller	Lukas Petraitis	P123103	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	SYSTEM_BOOTSTRAP	2026-05-25 08:00:18.875129+03	Chief Operating Officer.	4	2
-6	human_controller	Marta Kovalenko	P304294	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	SYSTEM_BOOTSTRAP	2026-05-25 08:00:18.875129+03	Financial Controller and Accountant.	4	3
+COPY global."101_gov_identities" (governance_identity_id, identity_type, identity_name, identity_code, valid_from, valid_to, identity_status, identity_description, created_by_identity_id, person_id) FROM stdin;
+4	human_controller	Andriy Pylypenko	P010001	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	Genesis Human Controller. Organizational trust anchor.	\N	1
+5	human_controller	Lukas Petraitis	P123103	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	Chief Operating Officer.	4	2
+6	human_controller	Marta Kovalenko	P304294	2026-05-25 08:00:18.875129+03	3001-12-31 02:00:00+02	active	Financial Controller and Accountant.	4	3
 \.
 
 
@@ -2486,7 +2812,7 @@ COPY global."101_gov_identities" (governance_identity_id, identity_type, identit
 -- Data for Name: 102_gov_proposals; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."102_gov_proposals" (proposal_id, proposal_type, proposal_status, source_type, source_ref, entity_id, scenario_id, proposal_description, proposal_payload, generated_by, reviewed_by, reviewed_at, review_notes, superseded_by, created_at) FROM stdin;
+COPY global."102_gov_proposals" (proposal_id, proposal_type, proposal_status, source_type, source_ref, entity_id, scenario_id, proposal_description, proposal_payload, generated_by, reviewed_by, reviewed_at, review_notes, superseded_by) FROM stdin;
 \.
 
 
@@ -2494,7 +2820,7 @@ COPY global."102_gov_proposals" (proposal_id, proposal_type, proposal_status, so
 -- Data for Name: 103_gov_delegations; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."103_gov_delegations" (delegation_id, delegator_id, delegatee_id, delegation_scope, entity_id, valid_from, valid_to, revoked_at, revoked_by, delegation_description, created_by, created_at) FROM stdin;
+COPY global."103_gov_delegations" (delegation_id, delegator_id, delegatee_id, delegation_scope, entity_id, valid_from, valid_to, revoked_at, revoked_by, delegation_description) FROM stdin;
 \.
 
 
@@ -2502,7 +2828,7 @@ COPY global."103_gov_delegations" (delegation_id, delegator_id, delegatee_id, de
 -- Data for Name: 104_gov_commits; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."104_gov_commits" (commit_id, commit_timestamp, committing_authority_id, commit_type, commit_reason, created_by, created_at, commit_status) FROM stdin;
+COPY global."104_gov_commits" (commit_id, commit_timestamp, committing_authority_id, commit_type, commit_reason, commit_status) FROM stdin;
 \.
 
 
@@ -2510,245 +2836,305 @@ COPY global."104_gov_commits" (commit_id, commit_timestamp, committing_authority
 -- Data for Name: 201_fin_coa; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."201_fin_coa" (account_code, parent_account_code, valid_from, valid_to, created_by, created_at, account_type, account_name) FROM stdin;
-acc_BS	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Balance Sheet
-acc_PL	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Profit and Loss
-acc_1	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Non-current Assets
-acc_2	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current Assets
-acc_3	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Equity
-acc_4	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Non-current Liabilities
-acc_5	acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current Liabilities
-acc_6	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Revenue
-acc_7	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cost of Sales and Direct Costs
-acc_8	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Operating Expenses
-acc_9	acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Financial Results, Tax and Closing
-acc_10	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Intangible Assets
-acc_11	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Property, Plant and Equipment
-acc_12	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investment Property
-acc_13	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term Financial Assets
-acc_14	acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred Tax and Other Non-current Assets
-acc_20	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Inventory
-acc_21	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade and Other Receivables
-acc_22	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term Financial Assets
-acc_23	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Cash and Cash Equivalents
-acc_24	acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepayments and Other Current Assets
-acc_30	acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Share Capital and Contributions
-acc_31	acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Reserves
-acc_32	acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Retained Earnings
-acc_40	acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term Borrowings
-acc_41	acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provisions and Employee Benefits
-acc_42	acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred Tax and Other Non-current Liabilities
-acc_50	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade and Other Payables
-acc_51	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term Borrowings
-acc_52	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Contract Liabilities and Deferred Revenue
-acc_53	acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current Provisions
-acc_60	acc_6	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Operating Revenue
-acc_61	acc_6	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Other Operating Income
-acc_70	acc_7	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cost of Goods Sold
-acc_71	acc_7	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Direct Service Costs
-acc_80	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Sales and Marketing Expenses
-acc_81	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	General and Administrative Expenses
-acc_82	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Research and Development
-acc_83	acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation and Amortization
-acc_90	acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Finance Income and Costs
-acc_91	acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Income Tax
-acc_99	acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Closing and Control Accounts
-acc_1000	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Capitalized formation expenses
-acc_1010	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Capitalized development costs
-acc_1020	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Software
-acc_1030	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	ERP systems
-acc_1040	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Licenses and patents
-acc_1050	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trademarks
-acc_1060	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Customer relationships
-acc_1070	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Goodwill
-acc_1080	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other intangible assets
-acc_1090	acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accumulated amortization — intangible assets
-acc_1100	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Land
-acc_1110	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Buildings
-acc_1120	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Leasehold improvements
-acc_1130	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Machinery and equipment
-acc_1140	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Vehicles
-acc_1150	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Furniture and fixtures
-acc_1160	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	IT equipment
-acc_1170	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Construction in progress
-acc_1180	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Right-of-use assets
-acc_1190	acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accumulated depreciation — PPE
-acc_1200	acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investment property at cost
-acc_1210	acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Fair value adjustments — investment property
-acc_1220	acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accumulated depreciation — investment property
-acc_1300	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term loans issued
-acc_1310	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bonds held
-acc_1320	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Equity investments
-acc_1330	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investments at FVOCI
-acc_1340	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Investments at FVTPL
-acc_1350	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Security deposits
-acc_1360	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Derivative financial assets
-acc_1370	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred consideration receivable
-acc_1380	acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Expected credit loss reserve
-acc_1400	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred tax assets
-acc_1410	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term prepaid expenses
-acc_1420	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Pension surplus assets
-acc_1430	acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other non-current assets
-acc_2000	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Raw materials
-acc_2010	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Work in progress
-acc_2020	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Finished goods
-acc_2030	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Merchandise inventory
-acc_2040	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Spare parts
-acc_2050	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Inventory in transit
-acc_2060	acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Inventory write-down reserve
-acc_2100	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade receivables
-acc_2110	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Allowance for doubtful accounts
-acc_2120	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Contract assets
-acc_2130	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Employee receivables
-acc_2140	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	VAT receivable
-acc_2150	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Tax receivable
-acc_2160	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Advances to suppliers
-acc_2170	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accrued income
-acc_2180	acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other receivables
-acc_2200	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term investments
-acc_2210	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Marketable securities
-acc_2220	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Derivative assets — current
-acc_2230	acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current portion of long-term loans receivable
-acc_2300	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Cash on hand
-acc_2310	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Main operating bank account
-acc_2320	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Payroll bank account
-acc_2330	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Restricted cash
-acc_2340	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Foreign currency bank accounts
-acc_2350	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Petty cash
-acc_2360	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Cash equivalents
-acc_2370	acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Clearing accounts
-acc_2400	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepaid insurance
-acc_2410	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepaid rent
-acc_2420	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prepaid software subscriptions
-acc_2430	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term deferred costs
-acc_2440	acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other current assets
-acc_3000	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Share capital
-acc_3010	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Share premium
-acc_3020	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Additional paid-in capital
-acc_3030	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Treasury shares
-acc_3040	acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Owner contributions
-acc_3100	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Legal reserve
-acc_3110	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Revaluation reserve
-acc_3120	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Foreign currency translation reserve
-acc_3130	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	FVOCI reserve
-acc_3140	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Hedging reserve
-acc_3150	acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other reserves
-acc_3200	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Retained earnings — prior years
-acc_3210	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current year profit/loss
-acc_3220	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Dividends declared
-acc_3230	acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Prior period adjustments
-acc_4000	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term bank loans
-acc_4010	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bonds payable
-acc_4020	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Lease liabilities — non-current
-acc_4030	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Shareholder loans
-acc_4040	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Convertible debt
-acc_4050	acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred consideration payable
-acc_4100	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provision for warranties
-acc_4110	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provision for litigation
-acc_4120	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Provision for environmental obligations
-acc_4130	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Asset retirement obligations
-acc_4140	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Pension liabilities
-acc_4150	acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-service employee benefits
-acc_4200	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred tax liabilities
-acc_4210	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred revenue — non-current
-acc_4220	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Long-term accruals
-acc_4230	acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other non-current liabilities
-acc_5000	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Trade payables
-acc_5010	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Accrued expenses
-acc_5020	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Payroll payable
-acc_5030	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Social security payable
-acc_5040	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	VAT payable
-acc_5050	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Corporate income tax payable
-acc_5060	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Withholding tax payable
-acc_5070	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Employee reimbursements payable
-acc_5080	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other taxes payable
-acc_5090	acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other payables
-acc_5100	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term bank loans
-acc_5110	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Current portion of long-term debt
-acc_5120	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Lease liabilities — current
-acc_5130	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Interest payable
-acc_5140	acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bank overdrafts
-acc_5200	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Contract liabilities
-acc_5210	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Deferred subscription revenue
-acc_5220	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Customer advances
-acc_5230	acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Unearned revenue
-acc_5300	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Short-term warranty provision
-acc_5310	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Restructuring provision
-acc_5320	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Bonus provision
-acc_5330	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Vacation accrual
-acc_5340	acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	balance_sheet	Other current provisions
-acc_6000	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Product sales revenue
-acc_6010	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Service revenue
-acc_6020	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Subscription revenue
-acc_6030	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Maintenance revenue
-acc_6040	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Commission revenue
-acc_6050	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Licensing revenue
-acc_6060	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Construction contract revenue
-acc_6070	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Revenue adjustments
-acc_6080	acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Discounts and rebates
-acc_6100	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Rental income
-acc_6110	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Government grants
-acc_6120	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Gain on disposal of assets
-acc_6130	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Insurance recoveries
-acc_6140	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Foreign exchange gains
-acc_6150	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Fair value gains
-acc_6160	acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Miscellaneous operating income
-acc_7000	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Raw material consumption
-acc_7010	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Direct labor
-acc_7020	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Manufacturing overhead
-acc_7030	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Inventory write-downs
-acc_7040	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Freight and import duties
-acc_7050	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cost of merchandise sold
-acc_7060	acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Production variances
-acc_7100	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Subcontractor costs
-acc_7110	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Project labor costs
-acc_7120	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Cloud infrastructure costs
-acc_7130	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Direct software licensing costs
-acc_7140	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Hosting costs
-acc_7150	acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Customer support delivery costs
-acc_8000	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Advertising expense
-acc_8010	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Marketing campaigns
-acc_8020	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Sales commissions
-acc_8030	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Travel and entertainment
-acc_8040	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Trade show expenses
-acc_8050	acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Customer acquisition costs
-acc_8100	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Salaries and wages
-acc_8110	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Payroll taxes
-acc_8120	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Office rent
-acc_8130	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Utilities
-acc_8140	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Legal fees
-acc_8150	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Audit fees
-acc_8160	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Consulting fees
-acc_8170	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	IT expenses
-acc_8180	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Insurance expense
-acc_8190	acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Office supplies
-acc_8200	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Research expenses
-acc_8210	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Prototype development
-acc_8220	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Engineering salaries
-acc_8230	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Laboratory expenses
-acc_8240	acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Testing and certification
-acc_8300	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — buildings
-acc_8310	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — machinery
-acc_8320	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — vehicles
-acc_8330	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Amortization — software
-acc_8340	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Amortization — licenses
-acc_8350	acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Depreciation — right-of-use assets
-acc_9000	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Interest income
-acc_9010	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Dividend income
-acc_9020	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Interest expense
-acc_9030	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Lease interest expense
-acc_9040	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Foreign exchange losses
-acc_9050	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Fair value losses
-acc_9060	acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Bank charges
-acc_9100	acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Current income tax expense
-acc_9110	acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Deferred tax expense
-acc_9120	acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Prior year tax adjustments
-acc_9900	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Period closing account
-acc_9910	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Suspense account
-acc_9920	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Intercompany clearing
-acc_9930	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	FX revaluation clearing
-acc_9940	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Consolidation adjustments
-acc_9950	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-27 07:45:03.43102+03	income_statement	Elimination entries
+COPY global."201_fin_coa" (account_code, valid_from, valid_to, account_type, account_name, coa_id, coa_set_code, parent_coa_id) FROM stdin;
+acc_BS	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Balance Sheet	1	internal_project_coa	\N
+acc_PL	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Profit and Loss	2	internal_project_coa	\N
+bacc_10	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Total Project Revenue	248	budget_project_coa	\N
+bacc_20	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Direct Production Costs	249	budget_project_coa	\N
+bacc_30	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Project Operating Profit	250	budget_project_coa	\N
+bacc_40	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Indirect Costs and Overheads	251	budget_project_coa	\N
+bacc_50	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Project Net Profit	252	budget_project_coa	\N
+bacc_100	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Revenue from sales of goods	253	budget_project_coa	248
+bacc_101	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Revenue from sale of services	254	budget_project_coa	248
+bacc_102	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Revenue from other activities	255	budget_project_coa	248
+bacc_200	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Contractor fees — FOP	256	budget_project_coa	249
+bacc_201	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Contractor fees — Civil contract	257	budget_project_coa	249
+bacc_202	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Employed staff allocation	258	budget_project_coa	249
+bacc_203	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Electronic components	259	budget_project_coa	249
+bacc_204	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Mechanical components	260	budget_project_coa	249
+bacc_205	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Consumables	261	budget_project_coa	249
+bacc_206	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Chemical materials	262	budget_project_coa	249
+bacc_207	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Small equipment and tooling	263	budget_project_coa	249
+bacc_208	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Software licenses and tools	264	budget_project_coa	249
+bacc_209	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Testing and qualification	265	budget_project_coa	249
+bacc_210	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Employee taxes and benefits	266	budget_project_coa	249
+bacc_400	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	DevOps and infrastructure	267	budget_project_coa	251
+bacc_401	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Legal and IP	268	budget_project_coa	251
+bacc_402	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Office overheads	269	budget_project_coa	251
+bacc_403	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Government relations and permits	270	budget_project_coa	251
+bacc_404	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Travel and logistics	271	budget_project_coa	251
+bacc_405	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	budget	Cost of goods reclamation and servicing	272	budget_project_coa	251
+cacc_10	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Operating Activities	273	cashflow_universal	\N
+cacc_20	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Investing Activities	274	cashflow_universal	\N
+cacc_30	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Financing Activities	275	cashflow_universal	\N
+cacc_40	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Net Change in Cash	276	cashflow_universal	\N
+cacc_50	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Opening Cash Balance	277	cashflow_universal	\N
+cacc_60	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Closing Cash Balance	278	cashflow_universal	\N
+cacc_100	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Receipts from customers	279	cashflow_universal	273
+cacc_101	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — FOP contractor fees	280	cashflow_universal	273
+cacc_102	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Civil contract fees	281	cashflow_universal	273
+cacc_103	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Employed staff net of withholding	282	cashflow_universal	273
+cacc_104	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Employer social contributions (ESV / Sodra / ZUS)	283	cashflow_universal	273
+cacc_105	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Materials and components	284	cashflow_universal	273
+cacc_106	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Software and tools	285	cashflow_universal	273
+cacc_107	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Overhead services	286	cashflow_universal	273
+cacc_108	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — Income tax	287	cashflow_universal	273
+cacc_109	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments — VAT and other taxes	288	cashflow_universal	273
+cacc_199	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Net cash from operating activities	289	cashflow_universal	273
+cacc_200	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments for PPE acquisition	290	cashflow_universal	274
+cacc_201	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Payments for intangible asset acquisition	291	cashflow_universal	274
+cacc_202	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Proceeds from asset disposal	292	cashflow_universal	274
+cacc_299	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Net cash from investing activities	293	cashflow_universal	274
+cacc_300	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Proceeds from equity contributions	294	cashflow_universal	275
+cacc_301	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Proceeds from borrowings	295	cashflow_universal	275
+cacc_302	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Repayment of borrowings	296	cashflow_universal	275
+cacc_303	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Lease payments (IFRS 16)	297	cashflow_universal	275
+cacc_399	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	cash_flow	Net cash from financing activities	298	cashflow_universal	275
+acc_9120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Prior year tax adjustments	232	internal_project_coa	41
+acc_9900	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Period closing account	233	internal_project_coa	42
+acc_9910	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Suspense account	234	internal_project_coa	42
+acc_9920	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Intercompany clearing	235	internal_project_coa	42
+acc_9930	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	FX revaluation clearing	236	internal_project_coa	42
+acc_9940	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Consolidation adjustments	237	internal_project_coa	42
+acc_9950	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Elimination entries	238	internal_project_coa	42
+acc_231001	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Operating account — TOV Alpha UAH	239	internal_project_coa	100
+acc_231002	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Operating account — UAB Beta EUR	240	internal_project_coa	100
+acc_231003	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Operating account — Gamma PLN	241	internal_project_coa	100
+acc_231004	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Payroll account — TOV Alpha UAH	242	internal_project_coa	100
+acc_231005	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Payroll account — UAB Beta EUR	243	internal_project_coa	100
+acc_231006	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Payroll account — Gamma PLN	244	internal_project_coa	100
+acc_231007	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	FX account — TOV Alpha USD	245	internal_project_coa	100
+acc_231008	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	FX account — UAB Beta USD	246	internal_project_coa	100
+acc_231009	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	FX account — Gamma EUR	247	internal_project_coa	100
+acc_1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Non-current Assets	3	internal_project_coa	1
+acc_2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Current Assets	4	internal_project_coa	1
+acc_3	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Equity	5	internal_project_coa	1
+acc_4	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Non-current Liabilities	6	internal_project_coa	1
+acc_5	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Current Liabilities	7	internal_project_coa	1
+acc_6	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Revenue	8	internal_project_coa	2
+acc_7	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Cost of Sales and Direct Costs	9	internal_project_coa	2
+acc_8	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Operating Expenses	10	internal_project_coa	2
+acc_9	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Financial Results, Tax and Closing	11	internal_project_coa	2
+acc_10	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Intangible Assets	12	internal_project_coa	3
+acc_11	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Property, Plant and Equipment	13	internal_project_coa	3
+acc_12	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Investment Property	14	internal_project_coa	3
+acc_13	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-term Financial Assets	15	internal_project_coa	3
+acc_14	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred Tax and Other Non-current Assets	16	internal_project_coa	3
+acc_20	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Inventory	17	internal_project_coa	4
+acc_21	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Trade and Other Receivables	18	internal_project_coa	4
+acc_22	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Short-term Financial Assets	19	internal_project_coa	4
+acc_23	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Cash and Cash Equivalents	20	internal_project_coa	4
+acc_24	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Prepayments and Other Current Assets	21	internal_project_coa	4
+acc_30	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Share Capital and Contributions	22	internal_project_coa	5
+acc_31	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Reserves	23	internal_project_coa	5
+acc_32	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Retained Earnings	24	internal_project_coa	5
+acc_40	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-term Borrowings	25	internal_project_coa	6
+acc_41	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Provisions and Employee Benefits	26	internal_project_coa	6
+acc_42	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred Tax and Other Non-current Liabilities	27	internal_project_coa	6
+acc_50	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Trade and Other Payables	28	internal_project_coa	7
+acc_51	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Short-term Borrowings	29	internal_project_coa	7
+acc_52	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Contract Liabilities and Deferred Revenue	30	internal_project_coa	7
+acc_53	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Current Provisions	31	internal_project_coa	7
+acc_60	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Operating Revenue	32	internal_project_coa	8
+acc_61	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Other Operating Income	33	internal_project_coa	8
+acc_70	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Cost of Goods Sold	34	internal_project_coa	9
+acc_71	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Direct Service Costs	35	internal_project_coa	9
+acc_80	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Sales and Marketing Expenses	36	internal_project_coa	10
+acc_81	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	General and Administrative Expenses	37	internal_project_coa	10
+acc_82	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Research and Development	38	internal_project_coa	10
+acc_83	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Depreciation and Amortization	39	internal_project_coa	10
+acc_90	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Finance Income and Costs	40	internal_project_coa	11
+acc_91	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Income Tax	41	internal_project_coa	11
+acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Closing and Control Accounts	42	internal_project_coa	11
+acc_1000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Capitalized formation expenses	43	internal_project_coa	12
+acc_1010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Capitalized development costs	44	internal_project_coa	12
+acc_1020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Software	45	internal_project_coa	12
+acc_1030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	ERP systems	46	internal_project_coa	12
+acc_1040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Licenses and patents	47	internal_project_coa	12
+acc_1050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Trademarks	48	internal_project_coa	12
+acc_1060	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Customer relationships	49	internal_project_coa	12
+acc_1070	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Goodwill	50	internal_project_coa	12
+acc_1080	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other intangible assets	51	internal_project_coa	12
+acc_1090	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Accumulated amortization — intangible assets	52	internal_project_coa	12
+acc_1100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Land	53	internal_project_coa	13
+acc_1110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Buildings	54	internal_project_coa	13
+acc_1120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Leasehold improvements	55	internal_project_coa	13
+acc_1130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Machinery and equipment	56	internal_project_coa	13
+acc_1140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Vehicles	57	internal_project_coa	13
+acc_1150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Furniture and fixtures	58	internal_project_coa	13
+acc_1160	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	IT equipment	59	internal_project_coa	13
+acc_1170	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Construction in progress	60	internal_project_coa	13
+acc_1180	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Right-of-use assets	61	internal_project_coa	13
+acc_1190	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Accumulated depreciation — PPE	62	internal_project_coa	13
+acc_1200	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Investment property at cost	63	internal_project_coa	14
+acc_1210	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Fair value adjustments — investment property	64	internal_project_coa	14
+acc_1220	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Accumulated depreciation — investment property	65	internal_project_coa	14
+acc_1300	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-term loans issued	66	internal_project_coa	15
+acc_1310	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Bonds held	67	internal_project_coa	15
+acc_1320	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Equity investments	68	internal_project_coa	15
+acc_1330	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Investments at FVOCI	69	internal_project_coa	15
+acc_1340	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Investments at FVTPL	70	internal_project_coa	15
+acc_1350	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Security deposits	71	internal_project_coa	15
+acc_1360	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Derivative financial assets	72	internal_project_coa	15
+acc_1370	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred consideration receivable	73	internal_project_coa	15
+acc_1380	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Expected credit loss reserve	74	internal_project_coa	15
+acc_1400	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred tax assets	75	internal_project_coa	16
+acc_1410	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-term prepaid expenses	76	internal_project_coa	16
+acc_1420	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Pension surplus assets	77	internal_project_coa	16
+acc_1430	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other non-current assets	78	internal_project_coa	16
+acc_2000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Raw materials	79	internal_project_coa	17
+acc_2010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Work in progress	80	internal_project_coa	17
+acc_2020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Finished goods	81	internal_project_coa	17
+acc_2030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Merchandise inventory	82	internal_project_coa	17
+acc_2040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Spare parts	83	internal_project_coa	17
+acc_2050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Inventory in transit	84	internal_project_coa	17
+acc_2060	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Inventory write-down reserve	85	internal_project_coa	17
+acc_2100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Trade receivables	86	internal_project_coa	18
+acc_2110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Allowance for doubtful accounts	87	internal_project_coa	18
+acc_2120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Contract assets	88	internal_project_coa	18
+acc_2130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Employee receivables	89	internal_project_coa	18
+acc_2140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	VAT receivable	90	internal_project_coa	18
+acc_2150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Tax receivable	91	internal_project_coa	18
+acc_2160	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Advances to suppliers	92	internal_project_coa	18
+acc_2170	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Accrued income	93	internal_project_coa	18
+acc_2180	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other receivables	94	internal_project_coa	18
+acc_2200	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Short-term investments	95	internal_project_coa	19
+acc_2210	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Marketable securities	96	internal_project_coa	19
+acc_2220	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Derivative assets — current	97	internal_project_coa	19
+acc_2230	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Current portion of long-term loans receivable	98	internal_project_coa	19
+acc_2300	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Cash on hand	99	internal_project_coa	20
+acc_2310	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Main operating bank account	100	internal_project_coa	20
+acc_2320	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Payroll bank account	101	internal_project_coa	20
+acc_2330	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Restricted cash	102	internal_project_coa	20
+acc_2340	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Foreign currency bank accounts	103	internal_project_coa	20
+acc_2350	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Petty cash	104	internal_project_coa	20
+acc_2360	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Cash equivalents	105	internal_project_coa	20
+acc_2370	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Clearing accounts	106	internal_project_coa	20
+acc_2400	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Prepaid insurance	107	internal_project_coa	21
+acc_2410	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Prepaid rent	108	internal_project_coa	21
+acc_2420	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Prepaid software subscriptions	109	internal_project_coa	21
+acc_2430	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Short-term deferred costs	110	internal_project_coa	21
+acc_2440	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other current assets	111	internal_project_coa	21
+acc_3000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Share capital	112	internal_project_coa	22
+acc_3010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Share premium	113	internal_project_coa	22
+acc_3020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Additional paid-in capital	114	internal_project_coa	22
+acc_3030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Treasury shares	115	internal_project_coa	22
+acc_3040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Owner contributions	116	internal_project_coa	22
+acc_3100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Legal reserve	117	internal_project_coa	23
+acc_3110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Revaluation reserve	118	internal_project_coa	23
+acc_3120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Foreign currency translation reserve	119	internal_project_coa	23
+acc_3130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	FVOCI reserve	120	internal_project_coa	23
+acc_3140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Hedging reserve	121	internal_project_coa	23
+acc_3150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other reserves	122	internal_project_coa	23
+acc_3200	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Retained earnings — prior years	123	internal_project_coa	24
+acc_3210	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Current year profit/loss	124	internal_project_coa	24
+acc_3220	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Dividends declared	125	internal_project_coa	24
+acc_3230	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Prior period adjustments	126	internal_project_coa	24
+acc_4000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-term bank loans	127	internal_project_coa	25
+acc_4010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Bonds payable	128	internal_project_coa	25
+acc_4020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Lease liabilities — non-current	129	internal_project_coa	25
+acc_4030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Shareholder loans	130	internal_project_coa	25
+acc_4040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Convertible debt	131	internal_project_coa	25
+acc_4050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred consideration payable	132	internal_project_coa	25
+acc_4100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Provision for warranties	133	internal_project_coa	26
+acc_4110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Provision for litigation	134	internal_project_coa	26
+acc_4120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Provision for environmental obligations	135	internal_project_coa	26
+acc_4130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Asset retirement obligations	136	internal_project_coa	26
+acc_4140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Pension liabilities	137	internal_project_coa	26
+acc_4150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-service employee benefits	138	internal_project_coa	26
+acc_4200	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred tax liabilities	139	internal_project_coa	27
+acc_4210	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred revenue — non-current	140	internal_project_coa	27
+acc_4220	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Long-term accruals	141	internal_project_coa	27
+acc_4230	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other non-current liabilities	142	internal_project_coa	27
+acc_5000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Trade payables	143	internal_project_coa	28
+acc_5010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Accrued expenses	144	internal_project_coa	28
+acc_5020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Payroll payable	145	internal_project_coa	28
+acc_5030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Social security payable	146	internal_project_coa	28
+acc_5040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	VAT payable	147	internal_project_coa	28
+acc_5050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Corporate income tax payable	148	internal_project_coa	28
+acc_5060	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Withholding tax payable	149	internal_project_coa	28
+acc_5070	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Employee reimbursements payable	150	internal_project_coa	28
+acc_5080	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other taxes payable	151	internal_project_coa	28
+acc_5090	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other payables	152	internal_project_coa	28
+acc_5100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Short-term bank loans	153	internal_project_coa	29
+acc_5110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Current portion of long-term debt	154	internal_project_coa	29
+acc_5120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Lease liabilities — current	155	internal_project_coa	29
+acc_5130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Interest payable	156	internal_project_coa	29
+acc_5140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Bank overdrafts	157	internal_project_coa	29
+acc_5200	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Contract liabilities	158	internal_project_coa	30
+acc_5210	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Deferred subscription revenue	159	internal_project_coa	30
+acc_5220	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Customer advances	160	internal_project_coa	30
+acc_5230	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Unearned revenue	161	internal_project_coa	30
+acc_5300	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Short-term warranty provision	162	internal_project_coa	31
+acc_5310	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Restructuring provision	163	internal_project_coa	31
+acc_5320	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Bonus provision	164	internal_project_coa	31
+acc_5330	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Vacation accrual	165	internal_project_coa	31
+acc_5340	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	balance_sheet	Other current provisions	166	internal_project_coa	31
+acc_6000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Product sales revenue	167	internal_project_coa	32
+acc_6010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Service revenue	168	internal_project_coa	32
+acc_6020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Subscription revenue	169	internal_project_coa	32
+acc_6030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Maintenance revenue	170	internal_project_coa	32
+acc_6040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Commission revenue	171	internal_project_coa	32
+acc_6050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Licensing revenue	172	internal_project_coa	32
+acc_6060	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Construction contract revenue	173	internal_project_coa	32
+acc_6070	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Revenue adjustments	174	internal_project_coa	32
+acc_6080	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Discounts and rebates	175	internal_project_coa	32
+acc_6100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Rental income	176	internal_project_coa	33
+acc_6110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Government grants	177	internal_project_coa	33
+acc_6120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Gain on disposal of assets	178	internal_project_coa	33
+acc_6130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Insurance recoveries	179	internal_project_coa	33
+acc_6140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Foreign exchange gains	180	internal_project_coa	33
+acc_6150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Fair value gains	181	internal_project_coa	33
+acc_6160	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Miscellaneous operating income	182	internal_project_coa	33
+acc_7000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Raw material consumption	183	internal_project_coa	34
+acc_7010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Direct labor	184	internal_project_coa	34
+acc_7020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Manufacturing overhead	185	internal_project_coa	34
+acc_7030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Inventory write-downs	186	internal_project_coa	34
+acc_7040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Freight and import duties	187	internal_project_coa	34
+acc_7050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Cost of merchandise sold	188	internal_project_coa	34
+acc_7060	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Production variances	189	internal_project_coa	34
+acc_7100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Subcontractor costs	190	internal_project_coa	35
+acc_7110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Project labor costs	191	internal_project_coa	35
+acc_7120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Cloud infrastructure costs	192	internal_project_coa	35
+acc_7130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Direct software licensing costs	193	internal_project_coa	35
+acc_7140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Hosting costs	194	internal_project_coa	35
+acc_7150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Customer support delivery costs	195	internal_project_coa	35
+acc_8000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Advertising expense	196	internal_project_coa	36
+acc_8010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Marketing campaigns	197	internal_project_coa	36
+acc_8020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Sales commissions	198	internal_project_coa	36
+acc_8030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Travel and entertainment	199	internal_project_coa	36
+acc_8040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Trade show expenses	200	internal_project_coa	36
+acc_8050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Customer acquisition costs	201	internal_project_coa	36
+acc_8100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Salaries and wages	202	internal_project_coa	37
+acc_8110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Payroll taxes	203	internal_project_coa	37
+acc_8120	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Office rent	204	internal_project_coa	37
+acc_8130	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Utilities	205	internal_project_coa	37
+acc_8140	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Legal fees	206	internal_project_coa	37
+acc_8150	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Audit fees	207	internal_project_coa	37
+acc_8160	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Consulting fees	208	internal_project_coa	37
+acc_8170	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	IT expenses	209	internal_project_coa	37
+acc_8180	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Insurance expense	210	internal_project_coa	37
+acc_8190	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Office supplies	211	internal_project_coa	37
+acc_8200	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Research expenses	212	internal_project_coa	38
+acc_8210	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Prototype development	213	internal_project_coa	38
+acc_8220	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Engineering salaries	214	internal_project_coa	38
+acc_8230	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Laboratory expenses	215	internal_project_coa	38
+acc_8240	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Testing and certification	216	internal_project_coa	38
+acc_8300	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Depreciation — buildings	217	internal_project_coa	39
+acc_8310	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Depreciation — machinery	218	internal_project_coa	39
+acc_8320	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Depreciation — vehicles	219	internal_project_coa	39
+acc_8330	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Amortization — software	220	internal_project_coa	39
+acc_8340	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Amortization — licenses	221	internal_project_coa	39
+acc_8350	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Depreciation — right-of-use assets	222	internal_project_coa	39
+acc_9000	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Interest income	223	internal_project_coa	40
+acc_9010	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Dividend income	224	internal_project_coa	40
+acc_9020	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Interest expense	225	internal_project_coa	40
+acc_9030	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Lease interest expense	226	internal_project_coa	40
+acc_9040	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Foreign exchange losses	227	internal_project_coa	40
+acc_9050	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Fair value losses	228	internal_project_coa	40
+acc_9060	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Bank charges	229	internal_project_coa	40
+acc_9100	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Current income tax expense	230	internal_project_coa	41
+acc_9110	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	income_statement	Deferred tax expense	231	internal_project_coa	41
 \.
 
 
@@ -2756,7 +3142,7 @@ acc_9950	acc_99	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2
 -- Data for Name: 202_fin_rulesets; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."202_fin_rulesets" (ruleset_id, ruleset_name, ruleset_type, ruleset_description, valid_from, valid_to, governance_scope_id, created_by, created_at) FROM stdin;
+COPY global."202_fin_rulesets" (ruleset_id, ruleset_name, ruleset_type, ruleset_description, valid_from, valid_to, governance_scope_id) FROM stdin;
 \.
 
 
@@ -2764,7 +3150,7 @@ COPY global."202_fin_rulesets" (ruleset_id, ruleset_name, ruleset_type, ruleset_
 -- Data for Name: 203_fin_ruleset_lines; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."203_fin_ruleset_lines" (line_id, ruleset_id, entity_1_id, entity_2_id, trf_direction, amount, valid_from, valid_to, created_by, created_at, line_description, account_code) FROM stdin;
+COPY global."203_fin_ruleset_lines" (line_id, ruleset_id, entity_1_id, entity_2_id, trf_direction, amount, valid_from, valid_to, line_description, coa_id) FROM stdin;
 \.
 
 
@@ -2780,7 +3166,7 @@ COPY global."301_evt_events" (event_id, event_type, source_type, source_ref, val
 -- Data for Name: 302_evt_primitive_transitions; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."302_evt_primitive_transitions" (primitive_transition_id, event_id, entity_id, account_code, transformation_direction, amount, currency_code, valid_time, assertion_time, created_by, created_at, transition_description, primitive_transition_type) FROM stdin;
+COPY global."302_evt_primitive_transitions" (primitive_transition_id, event_id, entity_id, transformation_direction, amount, currency_code, valid_time, assertion_time, transition_description, primitive_transition_type, coa_id) FROM stdin;
 \.
 
 
@@ -19177,37 +19563,37 @@ COPY global."401_ref_exchange_rates" (rate_id, rate_timestamp, base_currency, qu
 -- Data for Name: 402_ref_inflation_rates; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."402_ref_inflation_rates" (inflation_rate_id, applicable_year, currency_code, inflation_rate, created_by, created_at, rate_reference) FROM stdin;
-31	2020	USD	1.230000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-32	2021	USD	4.700000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-33	2022	USD	8.000000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-34	2023	USD	4.120000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-35	2024	USD	2.900000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-36	2025	USD	2.600000	system	2026-05-24 14:53:41.754309+03	rate_cpiu
-37	2020	EUR	0.250000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-38	2021	EUR	2.490000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-39	2022	EUR	8.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-40	2023	EUR	5.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-41	2024	EUR	2.400000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-42	2025	EUR	2.300000	system	2026-05-24 14:53:41.754309+03	rate_hicp
-43	2020	UAH	2.730000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-44	2021	UAH	9.360000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-45	2022	UAH	20.180000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-46	2023	UAH	12.850000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-47	2024	UAH	6.500000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-48	2025	UAH	12.730000	system	2026-05-24 14:53:41.754309+03	rate_sssu
-49	2020	PLN	3.370000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-50	2021	PLN	5.060000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-51	2022	PLN	14.430000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-52	2023	PLN	11.530000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-53	2024	PLN	3.780000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-54	2025	PLN	4.300000	system	2026-05-24 14:53:41.754309+03	rate_gusp
-55	2020	GBP	0.990000	system	2026-05-24 14:53:41.754309+03	rate_bons
-56	2021	GBP	2.520000	system	2026-05-24 14:53:41.754309+03	rate_bons
-57	2022	GBP	7.920000	system	2026-05-24 14:53:41.754309+03	rate_bons
-58	2023	GBP	6.790000	system	2026-05-24 14:53:41.754309+03	rate_bons
-59	2024	GBP	2.500000	system	2026-05-24 14:53:41.754309+03	rate_bons
-60	2025	GBP	3.200000	system	2026-05-24 14:53:41.754309+03	rate_bons
+COPY global."402_ref_inflation_rates" (inflation_rate_id, applicable_year, currency_code, inflation_rate, rate_reference) FROM stdin;
+31	2020	USD	1.230000	rate_cpiu
+32	2021	USD	4.700000	rate_cpiu
+33	2022	USD	8.000000	rate_cpiu
+34	2023	USD	4.120000	rate_cpiu
+35	2024	USD	2.900000	rate_cpiu
+36	2025	USD	2.600000	rate_cpiu
+37	2020	EUR	0.250000	rate_hicp
+38	2021	EUR	2.490000	rate_hicp
+39	2022	EUR	8.400000	rate_hicp
+40	2023	EUR	5.400000	rate_hicp
+41	2024	EUR	2.400000	rate_hicp
+42	2025	EUR	2.300000	rate_hicp
+43	2020	UAH	2.730000	rate_sssu
+44	2021	UAH	9.360000	rate_sssu
+45	2022	UAH	20.180000	rate_sssu
+46	2023	UAH	12.850000	rate_sssu
+47	2024	UAH	6.500000	rate_sssu
+48	2025	UAH	12.730000	rate_sssu
+49	2020	PLN	3.370000	rate_gusp
+50	2021	PLN	5.060000	rate_gusp
+51	2022	PLN	14.430000	rate_gusp
+52	2023	PLN	11.530000	rate_gusp
+53	2024	PLN	3.780000	rate_gusp
+54	2025	PLN	4.300000	rate_gusp
+55	2020	GBP	0.990000	rate_bons
+56	2021	GBP	2.520000	rate_bons
+57	2022	GBP	7.920000	rate_bons
+58	2023	GBP	6.790000	rate_bons
+59	2024	GBP	2.500000	rate_bons
+60	2025	GBP	3.200000	rate_bons
 \.
 
 
@@ -19215,12 +19601,12 @@ COPY global."402_ref_inflation_rates" (inflation_rate_id, applicable_year, curre
 -- Data for Name: 403_ref_currencies; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."403_ref_currencies" (currency_id, currency_name, iso_alpha_2, iso_alpha_3, currency_symbol, issuing_jurisdiction, valid_from, valid_to, created_by, created_at) FROM stdin;
-1	Euro	\N	EUR	€	European Central Bank — Euro Area	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-2	United States Dollar	US	USD	$	United States of America — Federal Reserve	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-3	Ukrainian Hryvnia	UA	UAH	₴	Ukraine — National Bank of Ukraine	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-4	Polish Zloty	PL	PLN	zł	Republic of Poland — Narodowy Bank Polski	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
-5	Pound Sterling	GB	GBP	£	United Kingdom — Bank of England	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02	system	2026-05-24 11:52:22.223395+03
+COPY global."403_ref_currencies" (currency_id, currency_name, iso_alpha_2, iso_alpha_3, currency_symbol, issuing_jurisdiction, valid_from, valid_to) FROM stdin;
+1	Euro	\N	EUR	€	European Central Bank — Euro Area	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02
+2	United States Dollar	US	USD	$	United States of America — Federal Reserve	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02
+3	Ukrainian Hryvnia	UA	UAH	₴	Ukraine — National Bank of Ukraine	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02
+4	Polish Zloty	PL	PLN	zł	Republic of Poland — Narodowy Bank Polski	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02
+5	Pound Sterling	GB	GBP	£	United Kingdom — Bank of England	1901-01-01 02:02:04+02:02:04	3001-12-31 02:00:00+02
 \.
 
 
@@ -19249,7 +19635,7 @@ rate_bons	CPI — UK	inflation	UK Office for National Statistics
 -- Data for Name: 405_ref_names; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."405_ref_names" (naming_id, object_type, object_ref, canonical_name, translation_language, translated_name, translation_context, created_by, created_at) FROM stdin;
+COPY global."405_ref_names" (naming_id, object_type, object_ref, canonical_name, translation_language, translated_name, translation_context) FROM stdin;
 \.
 
 
@@ -19320,7 +19706,7 @@ budget	Budget Planning	Accounts used exclusively for budget planning entries. Ma
 -- Data for Name: 410_cal_holidays; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."410_cal_holidays" (holiday_id, country_code, holiday_name, holiday_type, holiday_date, created_by, created_at) FROM stdin;
+COPY global."410_cal_holidays" (holiday_id, country_code, holiday_name, holiday_type, holiday_date) FROM stdin;
 \.
 
 
@@ -19343,84 +19729,124 @@ fop_pl	Sole proprietor — Poland (JDG)	private_entrepreneur	PL	Contract with pe
 
 
 --
+-- Data for Name: 411_ref_amortization_rates; Type: TABLE DATA; Schema: global; Owner: postgres
+--
+
+COPY global."411_ref_amortization_rates" (rate_id, asset_category_code, asset_category_name, jurisdiction, rate_basis, method, min_useful_life_yrs, max_useful_life_yrs, annual_rate_pct, legal_basis, notes, valid_from, valid_to) FROM stdin;
+1	computing_hardware	Computers and peripheral equipment	UA	tax	straight_line	2.00	2.00	50.0000	Art. 138.3 Tax Code of Ukraine — Group 4	Min 2 years for tax. Laptops, workstations, servers.	1901-01-01	3001-12-31
+2	computing_hardware	Computers and peripheral equipment	LT	tax	straight_line	2.00	2.00	50.0000	Annex 1, Pelno mokesčio įstatymas	Kompiuterinė technika — 2 years min.	1901-01-01	3001-12-31
+3	computing_hardware	Computers and peripheral equipment	PL	tax	straight_line	3.33	3.33	30.0000	Annex 1, Ustawa CIT — KŚT 491	Computers and peripheral hardware — 30% p.a.	1901-01-01	3001-12-31
+4	computing_hardware	Computers and peripheral equipment	\N	ifrs	straight_line	3.00	5.00	20.0000	IAS 16 — management estimate	Typical IFRS range 3-5 years. 5 years used as policy default.	1901-01-01	3001-12-31
+5	electronic_dev_equipment	Electronic development and test hardware	UA	tax	straight_line	5.00	5.00	20.0000	Art. 138.3 Tax Code of Ukraine — Group 3	Machinery and equipment — min 5 years.	1901-01-01	3001-12-31
+6	electronic_dev_equipment	Electronic development and test hardware	LT	tax	straight_line	5.00	7.00	15.0000	Annex 1, Pelno mokesčio įstatymas — machinery	Machines and equipment: 5-7 years range. 15% conservative.	1901-01-01	3001-12-31
+7	electronic_dev_equipment	Electronic development and test hardware	PL	tax	straight_line	5.00	7.00	14.0000	Annex 1, Ustawa CIT — KŚT 5	Machines and technical devices — 14% standard rate.	1901-01-01	3001-12-31
+8	electronic_dev_equipment	Electronic development and test hardware	\N	ifrs	straight_line	3.00	7.00	20.0000	IAS 16 — management estimate	Rapid obsolescence in development hardware. 5 years IFRS policy default.	1901-01-01	3001-12-31
+9	mechanical_tooling	Mechanical tools, jigs and fixtures	UA	tax	straight_line	4.00	4.00	25.0000	Art. 138.3 Tax Code of Ukraine — Group 6	Tools and equipment — min 4 years.	1901-01-01	3001-12-31
+10	mechanical_tooling	Mechanical tools, jigs and fixtures	LT	tax	straight_line	5.00	5.00	20.0000	Annex 1, Pelno mokesčio įstatymas	General machinery category.	1901-01-01	3001-12-31
+11	mechanical_tooling	Mechanical tools, jigs and fixtures	PL	tax	straight_line	5.00	7.00	14.0000	Annex 1, Ustawa CIT — KŚT 5	Machinery and equipment — 14%.	1901-01-01	3001-12-31
+12	mechanical_tooling	Mechanical tools, jigs and fixtures	\N	ifrs	straight_line	3.00	7.00	20.0000	IAS 16 — management estimate	5 years policy default. Short-lived custom tooling may warrant 3 years.	1901-01-01	3001-12-31
+13	industrial_machinery	Industrial automation and process machinery	UA	tax	straight_line	5.00	5.00	20.0000	Art. 138.3 Tax Code of Ukraine — Group 3	Machinery and equipment min 5 years.	1901-01-01	3001-12-31
+14	industrial_machinery	Industrial automation and process machinery	LT	tax	straight_line	5.00	7.00	15.0000	Annex 1, Pelno mokesčio įstatymas	15% standard for industrial equipment.	1901-01-01	3001-12-31
+15	industrial_machinery	Industrial automation and process machinery	PL	tax	straight_line	5.00	7.00	14.0000	Annex 1, Ustawa CIT — KŚT 4	Machinery — 14% CIT standard.	1901-01-01	3001-12-31
+16	industrial_machinery	Industrial automation and process machinery	\N	ifrs	straight_line	5.00	10.00	10.0000	IAS 16 — management estimate	GCD-specific. 10 years IFRS default for industrial automation.	1901-01-01	3001-12-31
+17	software_purchased	Purchased software licenses (perpetual)	UA	tax	straight_line	2.00	2.00	50.0000	Art. 138.3 Tax Code of Ukraine — intangibles	Minimum 2 years for intangibles. 50% straight-line for software.	1901-01-01	3001-12-31
+18	software_purchased	Purchased software licenses (perpetual)	LT	tax	straight_line	3.00	3.00	33.3333	Annex 1, Pelno mokesčio įstatymas — intangibles	Software licenses: 3 years standard.	1901-01-01	3001-12-31
+19	software_purchased	Purchased software licenses (perpetual)	PL	tax	straight_line	2.00	2.00	50.0000	Annex 1, Ustawa CIT — KŚT 02	Software — 50% p.a. under Polish CIT.	1901-01-01	3001-12-31
+20	software_purchased	Purchased software licenses (perpetual)	\N	ifrs	straight_line	2.00	5.00	25.0000	IAS 38 — management estimate	4 years IFRS policy default for perpetual licenses.	1901-01-01	3001-12-31
+21	software_developed	Internally developed software (IAS 38 development phase)	UA	tax	straight_line	2.00	10.00	25.0000	Art. 138.3 Tax Code of Ukraine — intangibles	Useful life for tax = economic useful life. Min 2 years. 25% = 4 year policy default.	1901-01-01	3001-12-31
+22	software_developed	Internally developed software (IAS 38 development phase)	LT	tax	straight_line	3.00	10.00	25.0000	Pelno mokesčio įstatymas — nuosavybė	25% = 4 year default.	1901-01-01	3001-12-31
+23	software_developed	Internally developed software (IAS 38 development phase)	PL	tax	straight_line	2.00	10.00	25.0000	Ustawa CIT — wartości niematerialne	25% p.a. = 4 year default.	1901-01-01	3001-12-31
+24	software_developed	Internally developed software (IAS 38 development phase)	\N	ifrs	straight_line	3.00	7.00	20.0000	IAS 38.97 — useful life assessment	HDS/LDS firmware and control software: 5 years IFRS default. GCD chemical control system: 5-7 years.	1901-01-01	3001-12-31
+25	patents_ip	Registered patents and intellectual property	UA	tax	straight_line	2.00	20.00	10.0000	Art. 138.3 Tax Code of Ukraine — intangibles	Useful life = registration term. 10 years = 10% policy default.	1901-01-01	3001-12-31
+26	patents_ip	Registered patents and intellectual property	LT	tax	straight_line	5.00	20.00	10.0000	Pelno mokesčio įstatymas — intelektinės nuosavybės	10 years LT default for patents.	1901-01-01	3001-12-31
+27	patents_ip	Registered patents and intellectual property	PL	tax	straight_line	5.00	20.00	20.0000	Annex 1, Ustawa CIT — KŚT 02	20% p.a. = 5 years for patents under Polish CIT.	1901-01-01	3001-12-31
+28	patents_ip	Registered patents and intellectual property	\N	ifrs	straight_line	5.00	20.00	10.0000	IAS 38.94 — useful life = registration term where finite	Amortize over remaining registration life. 10 years IFRS default where registration term not yet determined.	1901-01-01	3001-12-31
+29	office_equipment	Office equipment and furniture	UA	tax	straight_line	4.00	4.00	25.0000	Art. 138.3 Tax Code of Ukraine — Group 6	Group 6 — min 4 years.	1901-01-01	3001-12-31
+30	office_equipment	Office equipment and furniture	LT	tax	straight_line	5.00	5.00	20.0000	Annex 1, Pelno mokesčio įstatymas	General equipment category.	1901-01-01	3001-12-31
+31	office_equipment	Office equipment and furniture	PL	tax	straight_line	7.00	7.00	14.0000	Annex 1, Ustawa CIT — KŚT 8	Office furniture and equipment — 14%.	1901-01-01	3001-12-31
+32	office_equipment	Office equipment and furniture	\N	ifrs	straight_line	5.00	10.00	14.0000	IAS 16 — management estimate	7 years IFRS policy default. Low materiality category for these entities.	1901-01-01	3001-12-31
+\.
+
+
+--
 -- Data for Name: 501_hr_arrangements; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."501_hr_arrangements" (arrangement_id, person_id, entity_id, arrangement_type_code, position_id, project_id, valid_from, valid_to, time_allocation, pay_currency, pay_unit, pay_amount, created_by, created_at) FROM stdin;
-9	10	3	emp_pl	35	1	2025-01-01 02:00:00+02	2025-12-11 02:00:00+02	0.5000	EUR	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-10	10	3	emp_pl	35	2	2025-01-01 02:00:00+02	2025-12-11 02:00:00+02	0.5000	EUR	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-11	7	3	emp_pl	35	1	2025-12-12 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-12	7	3	emp_pl	35	2	2025-12-12 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-13	7	3	emp_pl	35	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-14	7	3	emp_pl	35	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-15	7	3	emp_pl	35	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	EUR	day	167.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-16	9	1	emp_ua	32	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	0.5000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-17	9	1	emp_ua	32	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	0.5000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-18	9	1	emp_ua	32	1	2025-04-01 03:00:00+03	2025-12-31 02:00:00+02	0.5000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-19	9	1	emp_ua	32	2	2025-04-01 03:00:00+03	2025-12-31 02:00:00+02	0.5000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-20	9	1	emp_ua	32	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-21	9	1	emp_ua	32	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-22	9	1	emp_ua	32	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-23	23	2	emp_lt	34	1	2025-01-01 02:00:00+02	2025-05-31 03:00:00+03	1.0000	EUR	hour	15.500000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-24	23	2	emp_lt	34	1	2025-06-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-25	13	3	emp_pl	36	1	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-26	13	3	emp_pl	36	2	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-27	13	3	emp_pl	36	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-28	13	3	emp_pl	36	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-29	13	3	emp_pl	36	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	EUR	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:45:16.983225+03
-6	2	2	emp_lt	33	\N	2025-01-01 02:00:00+02	2025-01-31 02:00:00+02	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-30	22	2	emp_lt	33	1	2025-02-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 08:47:27.798628+03
-31	4	2	emp_lt	1	1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	19.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:08:51.098448+03
-32	8	1	civil_ua	13	2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	19.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:08:51.098448+03
-33	12	1	fop_ua_3	25	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	USD	month	3000.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:08:51.098448+03
-34	11	1	civil_ua	8	1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	USD	month	3400.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-35	14	1	civil_ua	7	1	2025-01-01 02:00:00+02	2025-07-30 03:00:00+03	1.0000	USD	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-36	15	1	civil_ua	7	1	2025-08-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	hour	17.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-37	16	1	civil_ua	19	2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	10.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-38	20	1	civil_ua	10	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-39	20	1	civil_ua	10	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	day	95.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-40	21	1	fop_ua_3	22	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1600.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-41	21	1	fop_ua_3	22	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	12.500000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-42	3	1	fop_ua_3	3	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1700.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-43	3	1	fop_ua_3	3	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	hour	12.500000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-44	5	1	civil_ua	15	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-45	5	1	civil_ua	15	2	2025-04-01 03:00:00+03	2026-02-01 02:00:00+02	1.0000	EUR	hour	14.375000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-46	6	1	civil_ua	15	2	2026-03-01 02:00:00+02	2026-06-30 03:00:00+03	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-47	6	1	civil_ua	15	2	2026-07-30 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	month	2300.000000	SYSTEM_BOOTSTRAP	2026-05-26 09:53:28.886081+03
-81	27	1	fop_ua_3	2	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1200.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-82	27	1	fop_ua_3	2	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	14.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-83	28	1	fop_ua_3	14	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1400.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-84	28	1	fop_ua_3	14	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	day	96.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-85	29	1	fop_ua_3	28	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	EUR	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-86	29	1	fop_ua_3	28	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	2200.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-87	25	1	civil_ua	9	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-88	25	1	civil_ua	9	1	2025-04-01 03:00:00+03	2025-08-31 03:00:00+03	1.0000	USD	day	77.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-89	25	3	emp_pl	9	1	2025-09-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	1500.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-90	24	1	fop_ua_3	21	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1600.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-91	24	1	fop_ua_3	21	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	12.000000	SYSTEM_BOOTSTRAP	2026-05-26 12:05:21.903335+03
-92	35	1	fop_ua_3	12	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
-93	35	1	fop_ua_3	12	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	60000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
-94	36	1	fop_ua_3	24	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
-95	36	1	fop_ua_3	24	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	60000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:24:45.148145+03
-96	41	1	fop_ua_3	5	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-97	41	1	fop_ua_3	5	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-98	40	1	fop_ua_3	17	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-99	40	1	fop_ua_3	17	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-100	39	1	fop_ua_3	26	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-101	39	1	fop_ua_3	26	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-102	38	1	fop_ua_3	4	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-103	38	1	fop_ua_3	4	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-104	37	1	fop_ua_3	24	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-105	37	1	fop_ua_3	24	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-106	17	1	civil_ua	30	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	UAH	month	40000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-107	17	1	civil_ua	30	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000	SYSTEM_BOOTSTRAP	2026-05-26 16:50:04.798855+03
-1	1	1	emp_ua	37	1	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-2	1	1	emp_ua	38	2	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-3	1	1	emp_ua	37	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-4	1	1	emp_ua	38	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-5	1	1	emp_ua	39	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	UAH	month	25000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-7	18	2	emp_lt	2	1	2025-01-01 02:00:00+02	2025-06-30 03:00:00+03	1.0000	EUR	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
-8	19	2	emp_lt	2	1	2025-07-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	2000.000000	SYSTEM_BOOTSTRAP	2026-05-25 23:55:30.261642+03
+COPY global."501_hr_arrangements" (arrangement_id, person_id, entity_id, arrangement_type_code, position_id, project_id, valid_from, valid_to, time_allocation, pay_currency, pay_unit, pay_amount) FROM stdin;
+9	10	3	emp_pl	35	1	2025-01-01 02:00:00+02	2025-12-11 02:00:00+02	0.5000	EUR	month	3000.000000
+10	10	3	emp_pl	35	2	2025-01-01 02:00:00+02	2025-12-11 02:00:00+02	0.5000	EUR	month	3000.000000
+11	7	3	emp_pl	35	1	2025-12-12 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	day	167.000000
+12	7	3	emp_pl	35	2	2025-12-12 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	day	167.000000
+13	7	3	emp_pl	35	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	day	167.000000
+14	7	3	emp_pl	35	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	day	167.000000
+15	7	3	emp_pl	35	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	EUR	day	167.000000
+16	9	1	emp_ua	32	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	0.5000	UAH	month	40000.000000
+17	9	1	emp_ua	32	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	0.5000	UAH	month	40000.000000
+18	9	1	emp_ua	32	1	2025-04-01 03:00:00+03	2025-12-31 02:00:00+02	0.5000	UAH	month	50000.000000
+19	9	1	emp_ua	32	2	2025-04-01 03:00:00+03	2025-12-31 02:00:00+02	0.5000	UAH	month	50000.000000
+20	9	1	emp_ua	32	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	50000.000000
+21	9	1	emp_ua	32	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	50000.000000
+22	9	1	emp_ua	32	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	UAH	month	50000.000000
+23	23	2	emp_lt	34	1	2025-01-01 02:00:00+02	2025-05-31 03:00:00+03	1.0000	EUR	hour	15.500000
+24	23	2	emp_lt	34	1	2025-06-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	3400.000000
+25	13	3	emp_pl	36	1	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	month	3400.000000
+26	13	3	emp_pl	36	2	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	EUR	month	3400.000000
+27	13	3	emp_pl	36	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	month	3400.000000
+28	13	3	emp_pl	36	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	EUR	month	3400.000000
+29	13	3	emp_pl	36	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	EUR	month	3400.000000
+6	2	2	emp_lt	33	\N	2025-01-01 02:00:00+02	2025-01-31 02:00:00+02	1.0000	EUR	month	1500.000000
+30	22	2	emp_lt	33	1	2025-02-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	month	3000.000000
+31	4	2	emp_lt	1	1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	19.000000
+32	8	1	civil_ua	13	2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	19.000000
+33	12	1	fop_ua_3	25	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	USD	month	3000.000000
+34	11	1	civil_ua	8	1	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	USD	month	3400.000000
+35	14	1	civil_ua	7	1	2025-01-01 02:00:00+02	2025-07-30 03:00:00+03	1.0000	USD	month	2000.000000
+36	15	1	civil_ua	7	1	2025-08-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	hour	17.000000
+37	16	1	civil_ua	19	2	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1.0000	EUR	hour	10.000000
+38	20	1	civil_ua	10	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1500.000000
+39	20	1	civil_ua	10	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	day	95.000000
+40	21	1	fop_ua_3	22	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1600.000000
+41	21	1	fop_ua_3	22	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	12.500000
+42	3	1	fop_ua_3	3	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1700.000000
+43	3	1	fop_ua_3	3	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	hour	12.500000
+44	5	1	civil_ua	15	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1500.000000
+45	5	1	civil_ua	15	2	2025-04-01 03:00:00+03	2026-02-01 02:00:00+02	1.0000	EUR	hour	14.375000
+46	6	1	civil_ua	15	2	2026-03-01 02:00:00+02	2026-06-30 03:00:00+03	1.0000	EUR	month	1500.000000
+47	6	1	civil_ua	15	2	2026-07-30 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	month	2300.000000
+81	27	1	fop_ua_3	2	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1200.000000
+82	27	1	fop_ua_3	2	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	14.000000
+83	28	1	fop_ua_3	14	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	EUR	month	1400.000000
+84	28	1	fop_ua_3	14	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	day	96.000000
+85	29	1	fop_ua_3	28	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	EUR	month	2000.000000
+86	29	1	fop_ua_3	28	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	2200.000000
+87	25	1	civil_ua	9	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1500.000000
+88	25	1	civil_ua	9	1	2025-04-01 03:00:00+03	2025-08-31 03:00:00+03	1.0000	USD	day	77.000000
+89	25	3	emp_pl	9	1	2025-09-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	1500.000000
+90	24	1	fop_ua_3	21	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	USD	month	1600.000000
+91	24	1	fop_ua_3	21	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	USD	hour	12.000000
+92	35	1	fop_ua_3	12	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	50000.000000
+93	35	1	fop_ua_3	12	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	60000.000000
+94	36	1	fop_ua_3	24	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	50000.000000
+95	36	1	fop_ua_3	24	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	60000.000000
+96	41	1	fop_ua_3	5	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000
+97	41	1	fop_ua_3	5	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000
+98	40	1	fop_ua_3	17	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000
+99	40	1	fop_ua_3	17	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000
+100	39	1	fop_ua_3	26	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	UAH	month	40000.000000
+101	39	1	fop_ua_3	26	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000
+102	38	1	fop_ua_3	4	1	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000
+103	38	1	fop_ua_3	4	1	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000
+104	37	1	fop_ua_3	24	2	2025-01-01 02:00:00+02	2025-03-31 03:00:00+03	1.0000	UAH	month	40000.000000
+105	37	1	fop_ua_3	24	2	2025-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000
+106	17	1	civil_ua	30	3	2026-01-01 02:00:00+02	2026-03-31 03:00:00+03	1.0000	UAH	month	40000.000000
+107	17	1	civil_ua	30	3	2026-04-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	UAH	month	50000.000000
+1	1	1	emp_ua	37	1	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	UAH	month	25000.000000
+2	1	1	emp_ua	38	2	2025-01-01 02:00:00+02	2025-12-31 02:00:00+02	0.5000	UAH	month	25000.000000
+3	1	1	emp_ua	37	1	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	25000.000000
+4	1	1	emp_ua	38	2	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.4000	UAH	month	25000.000000
+5	1	1	emp_ua	39	3	2026-01-01 02:00:00+02	3001-12-31 02:00:00+02	0.2000	UAH	month	25000.000000
+7	18	2	emp_lt	2	1	2025-01-01 02:00:00+02	2025-06-30 03:00:00+03	1.0000	EUR	month	2000.000000
+8	19	2	emp_lt	2	1	2025-07-01 03:00:00+03	3001-12-31 02:00:00+02	1.0000	EUR	month	2000.000000
 \.
 
 
@@ -19428,45 +19854,45 @@ COPY global."501_hr_arrangements" (arrangement_id, person_id, entity_id, arrange
 -- Data for Name: 502_hr_positions; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."502_hr_positions" (position_id, position_class, position_name, position_superior_id, position_description, valid_from, valid_to, created_by, created_at, project_id, entity_id) FROM stdin;
-37	operational	Data Controller	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 21:53:35.628246+03	1	\N
-38	operational	Data Controller	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 21:53:35.628246+03	2	\N
-39	operational	Data Controller	25	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 21:53:35.628246+03	3	\N
-1	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	1	\N
-13	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	2	\N
-25	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	3	\N
-31	statutory	Директор	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	\N	1
-33	statutory	Direktorius	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	\N	2
-35	statutory	Prezes Zarządu	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:10:39.731608+03	\N	3
-8	operational	Chief System Engineer	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
-7	operational	DevOps/Cybersecurity Specialist	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
-10	operational	Procurement/Logistics Specialist	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
-11	operational	GR Manager	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
-12	operational	Legal Counsel	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	1	\N
-20	operational	Chief System Engineer	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
-19	operational	DevOps/Cybersecurity Specialist	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
-22	operational	Procurement/Logistics Specialist	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
-23	operational	GR Manager	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
-24	operational	Legal Counsel	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	2	\N
-28	operational	System Engineer	25	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	3	\N
-32	statutory	Головний бухгалтер	31	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	\N	1
-34	statutory	Vyriausiasis buhalteris	33	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	\N	2
-36	statutory	Główny Księgowy	35	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:09.42889+03	\N	3
-2	operational	System Engineer	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
-3	operational	Electrical Systems and Electronics Specialist	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
-4	operational	Mechanical Systems Specialist	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
-5	operational	Worker	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
-9	operational	Electronics and Antennae Systems Engineer/Software Developer	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	1	\N
-14	operational	System Engineer	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
-15	operational	Electrical Systems and Electronics Specialist	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
-16	operational	Mechanical Systems Specialist	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
-17	operational	Worker	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
-21	operational	Electronics and Antennae Systems Engineer/Software Developer	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	2	\N
-26	operational	Worker	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	3	\N
-29	operational	Mechanical Systems Specialist	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	3	\N
-30	operational	Chemist	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-25 13:11:24.100002+03	3	\N
-40	statutory	Operations Officer	33	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-26 09:05:32.745033+03	\N	2
-41	statutory	Inżynier Systemów	35	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	SYSTEM_BOOTSTRAP	2026-05-26 11:45:46.444263+03	\N	3
+COPY global."502_hr_positions" (position_id, position_class, position_name, position_superior_id, position_description, valid_from, valid_to, project_id, entity_id) FROM stdin;
+37	operational	Data Controller	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+38	operational	Data Controller	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+39	operational	Data Controller	25	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	3	\N
+1	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+13	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+25	operational	COO	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	3	\N
+31	statutory	Директор	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	1
+33	statutory	Direktorius	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	2
+35	statutory	Prezes Zarządu	\N	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	3
+8	operational	Chief System Engineer	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+7	operational	DevOps/Cybersecurity Specialist	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+10	operational	Procurement/Logistics Specialist	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+11	operational	GR Manager	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+12	operational	Legal Counsel	1	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+20	operational	Chief System Engineer	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+19	operational	DevOps/Cybersecurity Specialist	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+22	operational	Procurement/Logistics Specialist	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+23	operational	GR Manager	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+24	operational	Legal Counsel	13	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+28	operational	System Engineer	25	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	3	\N
+32	statutory	Головний бухгалтер	31	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	1
+34	statutory	Vyriausiasis buhalteris	33	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	2
+36	statutory	Główny Księgowy	35	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	3
+2	operational	System Engineer	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+3	operational	Electrical Systems and Electronics Specialist	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+4	operational	Mechanical Systems Specialist	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+5	operational	Worker	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+9	operational	Electronics and Antennae Systems Engineer/Software Developer	8	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	1	\N
+14	operational	System Engineer	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+15	operational	Electrical Systems and Electronics Specialist	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+16	operational	Mechanical Systems Specialist	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+17	operational	Worker	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+21	operational	Electronics and Antennae Systems Engineer/Software Developer	20	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	2	\N
+26	operational	Worker	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	3	\N
+29	operational	Mechanical Systems Specialist	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	3	\N
+30	operational	Chemist	28	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	3	\N
+40	statutory	Operations Officer	33	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	2
+41	statutory	Inżynier Systemów	35	\N	2025-01-01 02:00:00+02	3001-12-31 02:00:00+02	\N	3
 \.
 
 
@@ -19474,7 +19900,7 @@ COPY global."502_hr_positions" (position_id, position_class, position_name, posi
 -- Data for Name: 601_scen_budgets; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."601_scen_budgets" (budget_id, budget_name, budget_type, scenario_id, entity_id, period_from, period_to, approved_by, approved_at, superseded_by_budget_id, created_by, created_at) FROM stdin;
+COPY global."601_scen_budgets" (budget_id, budget_name, budget_type, scenario_id, entity_id, period_from, period_to, approved_by, approved_at, superseded_by_budget_id) FROM stdin;
 \.
 
 
@@ -19482,8 +19908,29 @@ COPY global."601_scen_budgets" (budget_id, budget_name, budget_type, scenario_id
 -- Data for Name: 602_scen_scenarios; Type: TABLE DATA; Schema: global; Owner: postgres
 --
 
-COPY global."602_scen_scenarios" (scenario_id, scenario_name, scenario_description, base_date, created_by, created_at, scenario_type, scenario_status) FROM stdin;
+COPY global."602_scen_scenarios" (scenario_id, scenario_name, scenario_description, base_date, scenario_type, scenario_status) FROM stdin;
 \.
+
+
+--
+-- Name: log_log_id_seq; Type: SEQUENCE SET; Schema: audit; Owner: postgres
+--
+
+SELECT pg_catalog.setval('audit.log_log_id_seq', 1087, true);
+
+
+--
+-- Name: 201_fin_coa_coa_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
+--
+
+SELECT pg_catalog.setval('global."201_fin_coa_coa_id_seq"', 298, true);
+
+
+--
+-- Name: 411_ref_amortization_rates_rate_id_seq; Type: SEQUENCE SET; Schema: global; Owner: postgres
+--
+
+SELECT pg_catalog.setval('global."411_ref_amortization_rates_rate_id_seq"', 32, true);
 
 
 --
@@ -19624,6 +20071,22 @@ SELECT pg_catalog.setval('global.gd_027_positions_position_id_seq', 41, true);
 --
 
 SELECT pg_catalog.setval('global.gd_029_budgets_budget_id_seq', 1, false);
+
+
+--
+-- Name: log log_pkey; Type: CONSTRAINT; Schema: audit; Owner: postgres
+--
+
+ALTER TABLE ONLY audit.log
+    ADD CONSTRAINT log_pkey PRIMARY KEY (log_id);
+
+
+--
+-- Name: 411_ref_amortization_rates 411_ref_amortization_rates_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."411_ref_amortization_rates"
+    ADD CONSTRAINT "411_ref_amortization_rates_pkey" PRIMARY KEY (rate_id);
 
 
 --
@@ -19787,14 +20250,6 @@ ALTER TABLE ONLY global."404_ref_rate_sources"
 
 
 --
--- Name: 201_fin_coa gd_016_coa_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."201_fin_coa"
-    ADD CONSTRAINT gd_016_coa_pk PRIMARY KEY (account_code);
-
-
---
 -- Name: 405_ref_names gd_017_naming_conventions_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -19923,6 +20378,51 @@ ALTER TABLE ONLY global."601_scen_budgets"
 
 
 --
+-- Name: 201_fin_coa pk_fin_coa; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT pk_fin_coa PRIMARY KEY (coa_id);
+
+
+--
+-- Name: 201_fin_coa uq_fin_coa_set_code; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT uq_fin_coa_set_code UNIQUE (coa_set_code, account_code);
+
+
+--
+-- Name: 411_ref_amortization_rates uq_rate; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."411_ref_amortization_rates"
+    ADD CONSTRAINT uq_rate UNIQUE (asset_category_code, jurisdiction, rate_basis, method);
+
+
+--
+-- Name: audit_log_performed_idx; Type: INDEX; Schema: audit; Owner: postgres
+--
+
+CREATE INDEX audit_log_performed_idx ON audit.log USING btree (performed_by_id, performed_at);
+
+
+--
+-- Name: audit_log_table_row_idx; Type: INDEX; Schema: audit; Owner: postgres
+--
+
+CREATE INDEX audit_log_table_row_idx ON audit.log USING btree (table_name, row_id);
+
+
+--
+-- Name: audit_log_timestamp_idx; Type: INDEX; Schema: audit; Owner: postgres
+--
+
+CREATE INDEX audit_log_timestamp_idx ON audit.log USING btree (performed_at);
+
+
+--
 -- Name: gd_001_events_assertion_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
@@ -20000,24 +20500,10 @@ CREATE INDEX gd_001_events_valid_time_idx ON global."301_evt_events" USING btree
 
 
 --
--- Name: gd_002_primitive_transitions_account_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_002_primitive_transitions_account_idx ON global."302_evt_primitive_transitions" USING btree (account_code);
-
-
---
 -- Name: gd_002_primitive_transitions_description_trgm_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
 CREATE INDEX gd_002_primitive_transitions_description_trgm_idx ON global."302_evt_primitive_transitions" USING gin (transition_description public.gin_trgm_ops) WHERE (transition_description IS NOT NULL);
-
-
---
--- Name: gd_002_primitive_transitions_entity_account_time_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_002_primitive_transitions_entity_account_time_idx ON global."302_evt_primitive_transitions" USING btree (entity_id, account_code, valid_time);
 
 
 --
@@ -20116,13 +20602,6 @@ CREATE INDEX gd_005_commit_records_commit_type_idx ON global."104_gov_commits" U
 --
 
 CREATE INDEX gd_005_commit_records_committing_authority_id_idx ON global."104_gov_commits" USING btree (committing_authority_id);
-
-
---
--- Name: gd_005_ruleset_lines_account_code_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_005_ruleset_lines_account_code_idx ON global."203_fin_ruleset_lines" USING btree (account_code) WHERE (account_code IS NOT NULL);
 
 
 --
@@ -20287,13 +20766,6 @@ CREATE INDEX gd_016_coa_account_type_idx ON global."201_fin_coa" USING btree (ac
 
 
 --
--- Name: gd_016_coa_parent_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_016_coa_parent_idx ON global."201_fin_coa" USING btree (parent_account_code);
-
-
---
 -- Name: gd_017_naming_conventions_language_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
@@ -20326,13 +20798,6 @@ CREATE INDEX gd_020_scenarios_status_idx ON global."602_scen_scenarios" USING bt
 --
 
 CREATE INDEX gd_020_scenarios_type_idx ON global."602_scen_scenarios" USING btree (scenario_type);
-
-
---
--- Name: gd_021_proposals_created_at_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_021_proposals_created_at_idx ON global."102_gov_proposals" USING btree (created_at);
 
 
 --
@@ -20546,6 +21011,212 @@ CREATE INDEX gd_029_budgets_type_idx ON global."601_scen_budgets" USING btree (b
 
 
 --
+-- Name: 001_core_entities trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."001_core_entities" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('entity_id');
+
+
+--
+-- Name: 002_core_people trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."002_core_people" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('person_id');
+
+
+--
+-- Name: 003_core_projects trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."003_core_projects" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('project_id');
+
+
+--
+-- Name: 101_gov_identities trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."101_gov_identities" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('governance_identity_id');
+
+
+--
+-- Name: 102_gov_proposals trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."102_gov_proposals" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('proposal_id');
+
+
+--
+-- Name: 103_gov_delegations trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."103_gov_delegations" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('delegation_id');
+
+
+--
+-- Name: 104_gov_commits trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."104_gov_commits" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('commit_id');
+
+
+--
+-- Name: 201_fin_coa trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."201_fin_coa" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('account_code');
+
+
+--
+-- Name: 202_fin_rulesets trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."202_fin_rulesets" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('ruleset_id');
+
+
+--
+-- Name: 203_fin_ruleset_lines trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."203_fin_ruleset_lines" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('line_id');
+
+
+--
+-- Name: 302_evt_primitive_transitions trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."302_evt_primitive_transitions" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('primitive_transition_id');
+
+
+--
+-- Name: 401_ref_exchange_rates trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."401_ref_exchange_rates" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('rate_id');
+
+
+--
+-- Name: 402_ref_inflation_rates trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."402_ref_inflation_rates" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('inflation_rate_id');
+
+
+--
+-- Name: 403_ref_currencies trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."403_ref_currencies" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('currency_id');
+
+
+--
+-- Name: 404_ref_rate_sources trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."404_ref_rate_sources" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('rate_code');
+
+
+--
+-- Name: 405_ref_names trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."405_ref_names" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('naming_id');
+
+
+--
+-- Name: 406_ref_pt_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."406_ref_pt_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('pt_type_code');
+
+
+--
+-- Name: 407_ref_statuses trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."407_ref_statuses" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('status_code');
+
+
+--
+-- Name: 408_ref_event_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."408_ref_event_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('event_type_code');
+
+
+--
+-- Name: 409_ref_coa_account_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."409_ref_coa_account_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('account_type_code');
+
+
+--
+-- Name: 410_cal_holidays trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."410_cal_holidays" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('holiday_id');
+
+
+--
+-- Name: 410_ref_arrangement_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."410_ref_arrangement_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('arrangement_type_code');
+
+
+--
+-- Name: 501_hr_arrangements trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."501_hr_arrangements" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('arrangement_id');
+
+
+--
+-- Name: 502_hr_positions trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."502_hr_positions" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('position_id');
+
+
+--
+-- Name: 601_scen_budgets trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."601_scen_budgets" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('budget_id');
+
+
+--
+-- Name: 602_scen_scenarios trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."602_scen_scenarios" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('scenario_id');
+
+
+--
+-- Name: 203_fin_ruleset_lines 203_fin_ruleset_lines_coa_id_fkey; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
+    ADD CONSTRAINT "203_fin_ruleset_lines_coa_id_fkey" FOREIGN KEY (coa_id) REFERENCES global."201_fin_coa"(coa_id);
+
+
+--
+-- Name: 302_evt_primitive_transitions 302_evt_primitive_transitions_coa_id_fkey; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
+    ADD CONSTRAINT "302_evt_primitive_transitions_coa_id_fkey" FOREIGN KEY (coa_id) REFERENCES global."201_fin_coa"(coa_id);
+
+
+--
+-- Name: 201_fin_coa fk_fin_coa_parent; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT fk_fin_coa_parent FOREIGN KEY (parent_coa_id) REFERENCES global."201_fin_coa"(coa_id);
+
+
+--
 -- Name: 301_evt_events gd_001_events_commit_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -20586,14 +21257,6 @@ ALTER TABLE ONLY global."301_evt_events"
 
 
 --
--- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_account_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."302_evt_primitive_transitions"
-    ADD CONSTRAINT gd_002_primitive_transitions_account_fk FOREIGN KEY (account_code) REFERENCES global."201_fin_coa"(account_code);
-
-
---
 -- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -20631,14 +21294,6 @@ ALTER TABLE ONLY global."202_fin_rulesets"
 
 ALTER TABLE ONLY global."104_gov_commits"
     ADD CONSTRAINT gd_005_commit_records_committing_authority_id_fk FOREIGN KEY (committing_authority_id) REFERENCES global."101_gov_identities"(governance_identity_id);
-
-
---
--- Name: 203_fin_ruleset_lines gd_005_ruleset_lines_account_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."203_fin_ruleset_lines"
-    ADD CONSTRAINT gd_005_ruleset_lines_account_code_fk FOREIGN KEY (account_code) REFERENCES global."201_fin_coa"(account_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
@@ -20727,14 +21382,6 @@ ALTER TABLE ONLY global."401_ref_exchange_rates"
 
 ALTER TABLE ONLY global."201_fin_coa"
     ADD CONSTRAINT gd_016_coa_account_type_fk FOREIGN KEY (account_type) REFERENCES global."409_ref_coa_account_types"(account_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-
---
--- Name: 201_fin_coa gd_016_coa_parent_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."201_fin_coa"
-    ADD CONSTRAINT gd_016_coa_parent_fk FOREIGN KEY (parent_account_code) REFERENCES global."201_fin_coa"(account_code);
 
 
 --
@@ -20877,5 +21524,5 @@ ALTER TABLE ONLY global."601_scen_budgets"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict D8e7LyC9Xzuccgt9tLK2dBqK7O9aAJC3KCyVTP3DmC3T4pJxlCOSy9ezKc7ydej
+\unrestrict YdyTBXigvyAV9axumfMrHAq1v3dB5bK1bwGlWXyUuFOPE72JjsbVXhNTopjTtof
 

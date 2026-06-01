@@ -2,7 +2,7 @@
 -- PostgreSQL database dump
 --
 
-\restrict R8iH4eon0FLCW2UmJSDPHB0bWAK4XKMqdxaZqEQx8IgZ0ECERthDZqGkCWCpyN6
+\restrict nFMPFHWHQPTaJP3Y84gL5Z5Ev6G7FFUyeaWXrfNawVexkowgerfextM3c7enQOu
 
 -- Dumped from database version 18.3
 -- Dumped by pg_dump version 18.3
@@ -18,6 +18,15 @@ SET check_function_bodies = false;
 SET xmloption = content;
 SET client_min_messages = warning;
 SET row_security = off;
+
+--
+-- Name: audit; Type: SCHEMA; Schema: -; Owner: postgres
+--
+
+CREATE SCHEMA audit;
+
+
+ALTER SCHEMA audit OWNER TO postgres;
 
 --
 -- Name: global; Type: SCHEMA; Schema: -; Owner: postgres
@@ -55,6 +64,52 @@ CREATE EXTENSION IF NOT EXISTS pg_trgm WITH SCHEMA public;
 
 COMMENT ON EXTENSION pg_trgm IS 'text similarity measurement and index searching based on trigrams';
 
+
+--
+-- Name: fn_log_mutation(); Type: FUNCTION; Schema: audit; Owner: postgres
+--
+
+CREATE FUNCTION audit.fn_log_mutation() RETURNS trigger
+    LANGUAGE plpgsql SECURITY DEFINER
+    AS $$
+DECLARE
+    v_row_id          text;
+    v_identity_id     bigint;
+    v_identity_code   text;
+    v_pk_column       text := TG_ARGV[0];
+BEGIN
+    -- Read session identity
+    BEGIN
+        v_identity_id   := current_setting('mars.current_identity_id',   true)::bigint;
+    EXCEPTION WHEN OTHERS THEN
+        v_identity_id   := NULL;
+    END;
+
+    BEGIN
+        v_identity_code := current_setting('mars.current_identity_code', true);
+    EXCEPTION WHEN OTHERS THEN
+        v_identity_code := 'UNKNOWN';
+    END;
+
+    -- Extract PK value from affected row
+    IF TG_OP = 'DELETE' THEN
+        v_row_id := (row_to_json(OLD)::jsonb) ->> v_pk_column;
+    ELSE
+        v_row_id := (row_to_json(NEW)::jsonb) ->> v_pk_column;
+    END IF;
+
+    INSERT INTO audit.log
+        (table_name, row_id, action, performed_by_id, performed_by_code, performed_at)
+    VALUES
+        (TG_TABLE_NAME, v_row_id, TG_OP, v_identity_id, v_identity_code, now());
+
+    IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
+    RETURN NEW;
+END;
+$$;
+
+
+ALTER FUNCTION audit.fn_log_mutation() OWNER TO postgres;
 
 --
 -- Name: fn_is_entity_position(bigint); Type: FUNCTION; Schema: global; Owner: postgres
@@ -229,6 +284,38 @@ SET default_tablespace = '';
 SET default_table_access_method = heap;
 
 --
+-- Name: log; Type: TABLE; Schema: audit; Owner: postgres
+--
+
+CREATE TABLE audit.log (
+    log_id bigint NOT NULL,
+    table_name text NOT NULL,
+    row_id text NOT NULL,
+    action text NOT NULL,
+    performed_by_id bigint,
+    performed_by_code text,
+    performed_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT audit_log_action_chk CHECK ((action = ANY (ARRAY['INSERT'::text, 'UPDATE'::text, 'DELETE'::text])))
+);
+
+
+ALTER TABLE audit.log OWNER TO postgres;
+
+--
+-- Name: log_log_id_seq; Type: SEQUENCE; Schema: audit; Owner: postgres
+--
+
+ALTER TABLE audit.log ALTER COLUMN log_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME audit.log_log_id_seq
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: 001_core_entities; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -243,8 +330,6 @@ CREATE TABLE global."001_core_entities" (
     legal_address text,
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_003_entities_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_003_entities_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_003_entities_created_at_not_null NOT NULL,
     CONSTRAINT gd_003_entities_identity_chk CHECK (((vat_id IS NOT NULL) OR (tax_id IS NOT NULL) OR (normalized_name IS NOT NULL))),
     CONSTRAINT gd_003_entities_valid_range_chk CHECK ((valid_to >= valid_from))
 );
@@ -330,20 +415,6 @@ COMMENT ON COLUMN global."001_core_entities".valid_to IS 'End of organizational 
 
 
 --
--- Name: COLUMN "001_core_entities".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."001_core_entities".created_by IS 'Infrastructure actor responsible for physical insertion of entity record.';
-
-
---
--- Name: COLUMN "001_core_entities".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."001_core_entities".created_at IS 'Physical insertion timestamp of entity record.';
-
-
---
 -- Name: 002_core_people; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -355,9 +426,7 @@ CREATE TABLE global."002_core_people" (
     last_name character varying(128) CONSTRAINT gd_007_people_last_name_not_null NOT NULL,
     tax_id character varying(128),
     date_of_birth date,
-    country_code character(2),
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_007_people_created_at_not_null NOT NULL
+    country_code character(2)
 );
 
 
@@ -427,20 +496,6 @@ COMMENT ON COLUMN global."002_core_people".country_code IS 'Canonical country co
 
 
 --
--- Name: COLUMN "002_core_people".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."002_core_people".created_by IS 'Infrastructure actor responsible for physical insertion of person record.';
-
-
---
--- Name: COLUMN "002_core_people".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."002_core_people".created_at IS 'Physical insertion timestamp of person record.';
-
-
---
 -- Name: 003_core_projects; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -452,8 +507,6 @@ CREATE TABLE global."003_core_projects" (
     description text,
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_025_projects_valid_from_nn NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_025_projects_valid_to_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_025_projects_created_at_nn NOT NULL,
     CONSTRAINT gd_025_projects_temporal_chk CHECK ((valid_from < valid_to))
 );
 
@@ -493,8 +546,6 @@ CREATE TABLE global."101_gov_identities" (
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_013_governance_identities_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_013_governance_identities_valid_to_not_null NOT NULL,
     identity_status character varying(32) CONSTRAINT gd_013_governance_identities_identity_status_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_013_governance_identities_created_at_not_null NOT NULL,
     identity_description text,
     created_by_identity_id bigint,
     person_id bigint,
@@ -538,7 +589,6 @@ CREATE TABLE global."102_gov_proposals" (
     reviewed_at timestamp with time zone,
     review_notes text,
     superseded_by bigint,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_021_proposals_created_at_nn NOT NULL,
     CONSTRAINT gd_021_proposals_proposal_status_chk CHECK ((proposal_status = ANY (ARRAY['pending'::text, 'approved'::text, 'rejected'::text, 'superseded'::text, 'archived'::text]))),
     CONSTRAINT gd_021_proposals_proposal_type_chk CHECK ((proposal_type = ANY (ARRAY['corrective'::text, 'governance'::text, 'disclosure'::text, 'analytical'::text, 'operational'::text]))),
     CONSTRAINT gd_021_proposals_review_consistency_chk CHECK ((((reviewed_by IS NULL) AND (reviewed_at IS NULL)) OR ((reviewed_by IS NOT NULL) AND (reviewed_at IS NOT NULL)))),
@@ -661,8 +711,6 @@ CREATE TABLE global."103_gov_delegations" (
     revoked_at timestamp with time zone,
     revoked_by text,
     delegation_description text,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_022_delegations_created_at_nn NOT NULL,
     CONSTRAINT gd_022_delegations_revocation_consistency_chk CHECK ((((revoked_at IS NULL) AND (revoked_by IS NULL)) OR ((revoked_at IS NOT NULL) AND (revoked_by IS NOT NULL)))),
     CONSTRAINT gd_022_delegations_revocation_temporal_chk CHECK (((revoked_at IS NULL) OR (revoked_at >= valid_from))),
     CONSTRAINT gd_022_delegations_scope_chk CHECK ((delegation_scope = ANY (ARRAY['authoritative_commit'::text, 'replay_execution'::text, 'disclosure_authorization'::text, 'delegation_issuance'::text, 'escalation_handling'::text, 'scenario_execution'::text]))),
@@ -753,8 +801,6 @@ CREATE TABLE global."104_gov_commits" (
     committing_authority_id bigint CONSTRAINT gd_005_commit_records_committing_authority_id_not_null NOT NULL,
     commit_type character varying(64) CONSTRAINT gd_005_commit_records_commit_type_not_null NOT NULL,
     commit_reason text,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_005_commit_records_created_at_not_null NOT NULL,
     commit_status character varying(32) CONSTRAINT gd_005_commit_records_commit_status_not_null NOT NULL,
     CONSTRAINT gd_006_commit_records_commit_status_chk CHECK (global.fn_is_valid_commit_status(commit_status)),
     CONSTRAINT gd_006_commit_records_commit_timestamp_chk CHECK ((commit_timestamp >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone))
@@ -769,13 +815,13 @@ ALTER TABLE global."104_gov_commits" OWNER TO postgres;
 
 CREATE TABLE global."201_fin_coa" (
     account_code character varying(128) CONSTRAINT gd_016_coa_account_code_not_null NOT NULL,
-    parent_account_code character varying(128),
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_016_coa_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_016_coa_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_016_coa_created_at_not_null NOT NULL,
     account_type text,
     account_name text,
+    coa_id bigint NOT NULL,
+    coa_set_code character varying(64) DEFAULT 'internal_project_coa'::character varying NOT NULL,
+    parent_coa_id bigint,
     CONSTRAINT gd_016_coa_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
@@ -797,13 +843,6 @@ COMMENT ON COLUMN global."201_fin_coa".account_code IS 'Stable canonical account
 
 
 --
--- Name: COLUMN "201_fin_coa".parent_account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."201_fin_coa".parent_account_code IS 'Parent accounting topology element used for hierarchical reconstruction and aggregation.';
-
-
---
 -- Name: COLUMN "201_fin_coa".valid_from; Type: COMMENT; Schema: global; Owner: postgres
 --
 
@@ -815,20 +854,6 @@ COMMENT ON COLUMN global."201_fin_coa".valid_from IS 'Beginning of accounting to
 --
 
 COMMENT ON COLUMN global."201_fin_coa".valid_to IS 'End of accounting topology applicability interval.';
-
-
---
--- Name: COLUMN "201_fin_coa".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."201_fin_coa".created_by IS 'Infrastructure actor responsible for physical insertion of accounting topology record.';
-
-
---
--- Name: COLUMN "201_fin_coa".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."201_fin_coa".created_at IS 'Physical insertion timestamp of accounting topology record.';
 
 
 --
@@ -846,6 +871,20 @@ COMMENT ON COLUMN global."201_fin_coa".account_name IS 'Human-readable account l
 
 
 --
+-- Name: 201_fin_coa_coa_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."201_fin_coa" ALTER COLUMN coa_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME global."201_fin_coa_coa_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: 202_fin_rulesets; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -857,8 +896,6 @@ CREATE TABLE global."202_fin_rulesets" (
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_008_ruleset_registry_valid_to_not_null NOT NULL,
     governance_scope_id bigint,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_008_ruleset_registry_created_at_not_null NOT NULL,
     CONSTRAINT gd_008_ruleset_registry_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
@@ -922,20 +959,6 @@ COMMENT ON COLUMN global."202_fin_rulesets".governance_scope_id IS 'Governance a
 
 
 --
--- Name: COLUMN "202_fin_rulesets".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."202_fin_rulesets".created_by IS 'Infrastructure actor responsible for physical Ruleset registration.';
-
-
---
--- Name: COLUMN "202_fin_rulesets".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."202_fin_rulesets".created_at IS 'Physical insertion timestamp of Ruleset registry record.';
-
-
---
 -- Name: 203_fin_ruleset_lines; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -948,10 +971,8 @@ CREATE TABLE global."203_fin_ruleset_lines" (
     amount numeric(20,6),
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_009_ruleset_lines_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_009_ruleset_lines_created_at_not_null NOT NULL,
     line_description text,
-    account_code character varying(128),
+    coa_id bigint,
     CONSTRAINT gd_009_ruleset_lines_transformation_direction_chk CHECK (((trf_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying, 'recognize'::character varying, 'derecognize'::character varying, 'transfer_in'::character varying, 'transfer_out'::character varying, 'debit'::character varying, 'credit'::character varying])::text[]))),
     CONSTRAINT gd_009_ruleset_lines_valid_range_chk CHECK ((valid_to >= valid_from))
 );
@@ -971,13 +992,6 @@ COMMENT ON COLUMN global."203_fin_ruleset_lines".entity_1_id IS 'Primary organiz
 --
 
 COMMENT ON COLUMN global."203_fin_ruleset_lines".entity_2_id IS 'Secondary organizational entity this Ruleset line applies to. Used for inter-entity rules such as intercompany transfers. Nullable. References gd_004_entities.entity_id.';
-
-
---
--- Name: COLUMN "203_fin_ruleset_lines".account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."203_fin_ruleset_lines".account_code IS 'Chart of Accounts identifier this Ruleset line applies to. Nullable — not all Ruleset lines are account-scoped. References gd_016_coa.account_code.';
 
 
 --
@@ -1031,16 +1045,14 @@ CREATE TABLE global."302_evt_primitive_transitions" (
     primitive_transition_id bigint CONSTRAINT gd_002_primitive_transitions_primitive_transition_id_not_null NOT NULL,
     event_id bigint CONSTRAINT gd_002_primitive_transitions_event_id_not_null NOT NULL,
     entity_id bigint CONSTRAINT gd_002_primitive_transitions_entity_id_not_null NOT NULL,
-    account_code character varying(128) CONSTRAINT gd_002_primitive_transitions_account_code_not_null NOT NULL,
     transformation_direction character varying(32) CONSTRAINT gd_002_primitive_transitions_transformation_direction_not_null NOT NULL,
     amount numeric(20,6) CONSTRAINT gd_002_primitive_transitions_amount_not_null NOT NULL,
     currency_code character(3),
     valid_time timestamp with time zone CONSTRAINT gd_002_primitive_transitions_valid_time_not_null NOT NULL,
     assertion_time timestamp with time zone CONSTRAINT gd_002_primitive_transitions_assertion_time_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_002_primitive_transitions_created_at_not_null NOT NULL,
     transition_description text,
     primitive_transition_type text CONSTRAINT gd_002_primitive_transitions_type_nn NOT NULL,
+    coa_id bigint NOT NULL,
     CONSTRAINT gd_002_primitive_transitions_amount_chk CHECK ((amount >= (0)::numeric)),
     CONSTRAINT gd_002_primitive_transitions_assertion_time_chk CHECK ((assertion_time >= '1901-01-01 02:02:04+02:02:04'::timestamp with time zone)),
     CONSTRAINT gd_002_primitive_transitions_direction_chk CHECK (((transformation_direction)::text = ANY ((ARRAY['increase'::character varying, 'decrease'::character varying])::text[]))),
@@ -1079,13 +1091,6 @@ COMMENT ON COLUMN global."302_evt_primitive_transitions".entity_id IS 'Organizat
 
 
 --
--- Name: COLUMN "302_evt_primitive_transitions".account_code; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."302_evt_primitive_transitions".account_code IS 'Accounting state topology element affected by primitive transition.';
-
-
---
 -- Name: COLUMN "302_evt_primitive_transitions".transformation_direction; Type: COMMENT; Schema: global; Owner: postgres
 --
 
@@ -1118,20 +1123,6 @@ COMMENT ON COLUMN global."302_evt_primitive_transitions".valid_time IS 'Business
 --
 
 COMMENT ON COLUMN global."302_evt_primitive_transitions".assertion_time IS 'Timestamp at which primitive transition became known to the system.';
-
-
---
--- Name: COLUMN "302_evt_primitive_transitions".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."302_evt_primitive_transitions".created_by IS 'Infrastructure actor responsible for physical insertion of primitive transition.';
-
-
---
--- Name: COLUMN "302_evt_primitive_transitions".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."302_evt_primitive_transitions".created_at IS 'Physical insertion timestamp of primitive transition.';
 
 
 --
@@ -1222,8 +1213,6 @@ CREATE TABLE global."402_ref_inflation_rates" (
     applicable_year integer CONSTRAINT gd_014_inflation_rates_applicable_year_nn NOT NULL,
     currency_code character(3) CONSTRAINT gd_014_inflation_rates_currency_code_nn NOT NULL,
     inflation_rate numeric(10,6) CONSTRAINT gd_014_inflation_rates_inflation_rate_nn NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_014_inflation_rates_created_at_nn NOT NULL,
     rate_reference character varying(128),
     CONSTRAINT gd_014_inflation_rates_rate_range_chk CHECK (((inflation_rate >= ('-100'::integer)::numeric) AND (inflation_rate <= (1000000)::numeric))),
     CONSTRAINT gd_014_inflation_rates_year_chk CHECK (((applicable_year >= 1900) AND (applicable_year <= 3000)))
@@ -1252,8 +1241,6 @@ CREATE TABLE global."403_ref_currencies" (
     issuing_jurisdiction character varying(128),
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_012_currency_registry_valid_from_not_null NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_012_currency_registry_valid_to_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_012_currency_registry_created_at_not_null NOT NULL,
     CONSTRAINT gd_012_currency_registry_valid_range_chk CHECK ((valid_to >= valid_from))
 );
 
@@ -1324,20 +1311,6 @@ COMMENT ON COLUMN global."403_ref_currencies".valid_to IS 'End of currency appli
 
 
 --
--- Name: COLUMN "403_ref_currencies".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."403_ref_currencies".created_by IS 'Infrastructure actor responsible for physical insertion of currency record.';
-
-
---
--- Name: COLUMN "403_ref_currencies".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."403_ref_currencies".created_at IS 'Physical insertion timestamp of currency record.';
-
-
---
 -- Name: 404_ref_rate_sources; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1363,9 +1336,7 @@ CREATE TABLE global."405_ref_names" (
     canonical_name character varying(256) CONSTRAINT gd_017_naming_conventions_canonical_name_not_null NOT NULL,
     translation_language character(2) CONSTRAINT gd_017_naming_conventions_translation_language_not_null NOT NULL,
     translated_name character varying(256) CONSTRAINT gd_017_naming_conventions_translated_name_not_null NOT NULL,
-    translation_context character varying(128),
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_017_naming_conventions_created_at_not_null NOT NULL
+    translation_context character varying(128)
 );
 
 
@@ -1425,20 +1396,6 @@ COMMENT ON COLUMN global."405_ref_names".translated_name IS 'Localized or transl
 --
 
 COMMENT ON COLUMN global."405_ref_names".translation_context IS 'Optional disclosure, legal or reporting context governing translation applicability.';
-
-
---
--- Name: COLUMN "405_ref_names".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."405_ref_names".created_by IS 'Infrastructure actor responsible for physical insertion of naming convention record.';
-
-
---
--- Name: COLUMN "405_ref_names".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."405_ref_names".created_at IS 'Physical insertion timestamp of naming convention record.';
 
 
 --
@@ -1576,9 +1533,7 @@ CREATE TABLE global."410_cal_holidays" (
     country_code character(2) CONSTRAINT gd_011_holidays_country_code_not_null NOT NULL,
     holiday_name character varying(256) CONSTRAINT gd_011_holidays_holiday_name_not_null NOT NULL,
     holiday_type character varying(64) CONSTRAINT gd_011_holidays_holiday_type_not_null NOT NULL,
-    holiday_date date CONSTRAINT gd_011_holidays_holiday_date_not_null NOT NULL,
-    created_by character varying(128),
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_011_holidays_created_at_not_null NOT NULL
+    holiday_date date CONSTRAINT gd_011_holidays_holiday_date_not_null NOT NULL
 );
 
 
@@ -1627,20 +1582,6 @@ COMMENT ON COLUMN global."410_cal_holidays".holiday_date IS 'Calendar date on wh
 
 
 --
--- Name: COLUMN "410_cal_holidays".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."410_cal_holidays".created_by IS 'Infrastructure actor responsible for physical insertion of holiday record.';
-
-
---
--- Name: COLUMN "410_cal_holidays".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."410_cal_holidays".created_at IS 'Physical insertion timestamp of holiday record.';
-
-
---
 -- Name: 410_ref_arrangement_types; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1685,6 +1626,53 @@ COMMENT ON COLUMN global."410_ref_arrangement_types".jurisdiction_code IS 'ISO 3
 
 
 --
+-- Name: 411_ref_amortization_rates; Type: TABLE; Schema: global; Owner: postgres
+--
+
+CREATE TABLE global."411_ref_amortization_rates" (
+    rate_id bigint NOT NULL,
+    asset_category_code character varying(64) NOT NULL,
+    asset_category_name character varying(128) NOT NULL,
+    jurisdiction character(2),
+    rate_basis character varying(16) NOT NULL,
+    method character varying(32) NOT NULL,
+    min_useful_life_yrs numeric(5,2),
+    max_useful_life_yrs numeric(5,2),
+    annual_rate_pct numeric(8,4) NOT NULL,
+    legal_basis text,
+    notes text,
+    valid_from date DEFAULT '1901-01-01'::date NOT NULL,
+    valid_to date DEFAULT '3001-12-31'::date NOT NULL,
+    CONSTRAINT chk_method CHECK (((method)::text = ANY ((ARRAY['straight_line'::character varying, 'declining_balance'::character varying, 'units_of_production'::character varying])::text[]))),
+    CONSTRAINT chk_rate_basis CHECK (((rate_basis)::text = ANY ((ARRAY['tax'::character varying, 'ifrs'::character varying])::text[]))),
+    CONSTRAINT chk_rate_pos CHECK ((annual_rate_pct > (0)::numeric))
+);
+
+
+ALTER TABLE global."411_ref_amortization_rates" OWNER TO postgres;
+
+--
+-- Name: TABLE "411_ref_amortization_rates"; Type: COMMENT; Schema: global; Owner: postgres
+--
+
+COMMENT ON TABLE global."411_ref_amortization_rates" IS 'Statutory and IFRS depreciation/amortization rate reference. jurisdiction NULL = universal IFRS guidance. rate_basis: tax = statutory minimum for CIT purposes; ifrs = IFRS economic useful life guidance. annual_rate_pct = 100 / useful_life_years for straight-line.';
+
+
+--
+-- Name: 411_ref_amortization_rates_rate_id_seq; Type: SEQUENCE; Schema: global; Owner: postgres
+--
+
+ALTER TABLE global."411_ref_amortization_rates" ALTER COLUMN rate_id ADD GENERATED ALWAYS AS IDENTITY (
+    SEQUENCE NAME global."411_ref_amortization_rates_rate_id_seq"
+    START WITH 1
+    INCREMENT BY 1
+    NO MINVALUE
+    NO MAXVALUE
+    CACHE 1
+);
+
+
+--
 -- Name: 501_hr_arrangements; Type: TABLE; Schema: global; Owner: postgres
 --
 
@@ -1701,8 +1689,6 @@ CREATE TABLE global."501_hr_arrangements" (
     pay_currency character(3),
     pay_unit text,
     pay_amount numeric,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_026_tm_created_at_nn NOT NULL,
     CONSTRAINT gd_026_tm_allocation_chk CHECK (((time_allocation > (0)::numeric) AND (time_allocation <= 1.0))),
     CONSTRAINT gd_026_tm_pay_unit_chk CHECK ((pay_unit = ANY (ARRAY['hour'::text, 'day'::text, 'month'::text, 'year'::text, 'delivery'::text]))),
     CONSTRAINT gd_026_tm_payment_consistency_chk CHECK ((((pay_currency IS NULL) AND (pay_unit IS NULL) AND (pay_amount IS NULL)) OR ((pay_currency IS NOT NULL) AND (pay_unit IS NOT NULL) AND (pay_amount IS NOT NULL)))),
@@ -1752,8 +1738,6 @@ CREATE TABLE global."502_hr_positions" (
     position_description text,
     valid_from timestamp with time zone DEFAULT '1901-01-01 02:02:04+02:02:04'::timestamp with time zone CONSTRAINT gd_027_positions_valid_from_nn NOT NULL,
     valid_to timestamp with time zone DEFAULT '3001-12-31 02:00:00+02'::timestamp with time zone CONSTRAINT gd_027_positions_valid_to_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_027_positions_created_at_nn NOT NULL,
     project_id bigint,
     entity_id bigint,
     CONSTRAINT gd_027_positions_class_chk CHECK ((position_class = ANY (ARRAY['statutory'::text, 'operational'::text]))),
@@ -1823,8 +1807,6 @@ CREATE TABLE global."601_scen_budgets" (
     approved_by bigint,
     approved_at timestamp with time zone,
     superseded_by_budget_id bigint,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_029_budgets_created_at_nn NOT NULL,
     CONSTRAINT gd_029_budgets_approval_consistency_chk CHECK ((((approved_by IS NULL) AND (approved_at IS NULL)) OR ((approved_by IS NOT NULL) AND (approved_at IS NOT NULL)))),
     CONSTRAINT gd_029_budgets_no_self_supersession_chk CHECK (((superseded_by_budget_id IS NULL) OR (superseded_by_budget_id <> budget_id))),
     CONSTRAINT gd_029_budgets_period_chk CHECK ((period_from < period_to)),
@@ -1892,8 +1874,6 @@ CREATE TABLE global."602_scen_scenarios" (
     scenario_name text CONSTRAINT gd_020_scenarios_scenario_name_nn NOT NULL,
     scenario_description text,
     base_date date CONSTRAINT gd_020_scenarios_base_date_nn NOT NULL,
-    created_by text,
-    created_at timestamp with time zone DEFAULT now() CONSTRAINT gd_020_scenarios_created_at_nn NOT NULL,
     scenario_type text DEFAULT 'projection'::text CONSTRAINT gd_020_scenarios_type_nn NOT NULL,
     scenario_status character varying(32) DEFAULT 'draft'::character varying CONSTRAINT gd_020_scenarios_status_nn NOT NULL,
     CONSTRAINT gd_020_scenarios_status_chk CHECK (global.fn_is_valid_scenario_status(scenario_status)),
@@ -1936,20 +1916,6 @@ COMMENT ON COLUMN global."602_scen_scenarios".scenario_description IS 'Narrative
 --
 
 COMMENT ON COLUMN global."602_scen_scenarios".base_date IS 'Temporal anchor from which this scenario projects forward. All hypothetical values tagged to this scenario must have applicable periods strictly after base_date.';
-
-
---
--- Name: COLUMN "602_scen_scenarios".created_by; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."602_scen_scenarios".created_by IS 'Actor who defined this scenario.';
-
-
---
--- Name: COLUMN "602_scen_scenarios".created_at; Type: COMMENT; Schema: global; Owner: postgres
---
-
-COMMENT ON COLUMN global."602_scen_scenarios".created_at IS 'Physical insertion timestamp of this scenario header.';
 
 
 --
@@ -2401,6 +2367,22 @@ ALTER TABLE ONLY global."410_cal_holidays" ALTER COLUMN holiday_id SET DEFAULT n
 
 
 --
+-- Name: log log_pkey; Type: CONSTRAINT; Schema: audit; Owner: postgres
+--
+
+ALTER TABLE ONLY audit.log
+    ADD CONSTRAINT log_pkey PRIMARY KEY (log_id);
+
+
+--
+-- Name: 411_ref_amortization_rates 411_ref_amortization_rates_pkey; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."411_ref_amortization_rates"
+    ADD CONSTRAINT "411_ref_amortization_rates_pkey" PRIMARY KEY (rate_id);
+
+
+--
 -- Name: 301_evt_events gd_001_events_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -2561,14 +2543,6 @@ ALTER TABLE ONLY global."404_ref_rate_sources"
 
 
 --
--- Name: 201_fin_coa gd_016_coa_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."201_fin_coa"
-    ADD CONSTRAINT gd_016_coa_pk PRIMARY KEY (account_code);
-
-
---
 -- Name: 405_ref_names gd_017_naming_conventions_pk; Type: CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -2697,6 +2671,51 @@ ALTER TABLE ONLY global."601_scen_budgets"
 
 
 --
+-- Name: 201_fin_coa pk_fin_coa; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT pk_fin_coa PRIMARY KEY (coa_id);
+
+
+--
+-- Name: 201_fin_coa uq_fin_coa_set_code; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT uq_fin_coa_set_code UNIQUE (coa_set_code, account_code);
+
+
+--
+-- Name: 411_ref_amortization_rates uq_rate; Type: CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."411_ref_amortization_rates"
+    ADD CONSTRAINT uq_rate UNIQUE (asset_category_code, jurisdiction, rate_basis, method);
+
+
+--
+-- Name: audit_log_performed_idx; Type: INDEX; Schema: audit; Owner: postgres
+--
+
+CREATE INDEX audit_log_performed_idx ON audit.log USING btree (performed_by_id, performed_at);
+
+
+--
+-- Name: audit_log_table_row_idx; Type: INDEX; Schema: audit; Owner: postgres
+--
+
+CREATE INDEX audit_log_table_row_idx ON audit.log USING btree (table_name, row_id);
+
+
+--
+-- Name: audit_log_timestamp_idx; Type: INDEX; Schema: audit; Owner: postgres
+--
+
+CREATE INDEX audit_log_timestamp_idx ON audit.log USING btree (performed_at);
+
+
+--
 -- Name: gd_001_events_assertion_time_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
@@ -2774,24 +2793,10 @@ CREATE INDEX gd_001_events_valid_time_idx ON global."301_evt_events" USING btree
 
 
 --
--- Name: gd_002_primitive_transitions_account_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_002_primitive_transitions_account_idx ON global."302_evt_primitive_transitions" USING btree (account_code);
-
-
---
 -- Name: gd_002_primitive_transitions_description_trgm_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
 CREATE INDEX gd_002_primitive_transitions_description_trgm_idx ON global."302_evt_primitive_transitions" USING gin (transition_description public.gin_trgm_ops) WHERE (transition_description IS NOT NULL);
-
-
---
--- Name: gd_002_primitive_transitions_entity_account_time_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_002_primitive_transitions_entity_account_time_idx ON global."302_evt_primitive_transitions" USING btree (entity_id, account_code, valid_time);
 
 
 --
@@ -2890,13 +2895,6 @@ CREATE INDEX gd_005_commit_records_commit_type_idx ON global."104_gov_commits" U
 --
 
 CREATE INDEX gd_005_commit_records_committing_authority_id_idx ON global."104_gov_commits" USING btree (committing_authority_id);
-
-
---
--- Name: gd_005_ruleset_lines_account_code_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_005_ruleset_lines_account_code_idx ON global."203_fin_ruleset_lines" USING btree (account_code) WHERE (account_code IS NOT NULL);
 
 
 --
@@ -3061,13 +3059,6 @@ CREATE INDEX gd_016_coa_account_type_idx ON global."201_fin_coa" USING btree (ac
 
 
 --
--- Name: gd_016_coa_parent_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_016_coa_parent_idx ON global."201_fin_coa" USING btree (parent_account_code);
-
-
---
 -- Name: gd_017_naming_conventions_language_idx; Type: INDEX; Schema: global; Owner: postgres
 --
 
@@ -3100,13 +3091,6 @@ CREATE INDEX gd_020_scenarios_status_idx ON global."602_scen_scenarios" USING bt
 --
 
 CREATE INDEX gd_020_scenarios_type_idx ON global."602_scen_scenarios" USING btree (scenario_type);
-
-
---
--- Name: gd_021_proposals_created_at_idx; Type: INDEX; Schema: global; Owner: postgres
---
-
-CREATE INDEX gd_021_proposals_created_at_idx ON global."102_gov_proposals" USING btree (created_at);
 
 
 --
@@ -3320,6 +3304,212 @@ CREATE INDEX gd_029_budgets_type_idx ON global."601_scen_budgets" USING btree (b
 
 
 --
+-- Name: 001_core_entities trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."001_core_entities" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('entity_id');
+
+
+--
+-- Name: 002_core_people trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."002_core_people" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('person_id');
+
+
+--
+-- Name: 003_core_projects trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."003_core_projects" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('project_id');
+
+
+--
+-- Name: 101_gov_identities trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."101_gov_identities" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('governance_identity_id');
+
+
+--
+-- Name: 102_gov_proposals trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."102_gov_proposals" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('proposal_id');
+
+
+--
+-- Name: 103_gov_delegations trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."103_gov_delegations" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('delegation_id');
+
+
+--
+-- Name: 104_gov_commits trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."104_gov_commits" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('commit_id');
+
+
+--
+-- Name: 201_fin_coa trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."201_fin_coa" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('account_code');
+
+
+--
+-- Name: 202_fin_rulesets trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."202_fin_rulesets" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('ruleset_id');
+
+
+--
+-- Name: 203_fin_ruleset_lines trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."203_fin_ruleset_lines" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('line_id');
+
+
+--
+-- Name: 302_evt_primitive_transitions trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."302_evt_primitive_transitions" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('primitive_transition_id');
+
+
+--
+-- Name: 401_ref_exchange_rates trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."401_ref_exchange_rates" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('rate_id');
+
+
+--
+-- Name: 402_ref_inflation_rates trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."402_ref_inflation_rates" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('inflation_rate_id');
+
+
+--
+-- Name: 403_ref_currencies trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."403_ref_currencies" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('currency_id');
+
+
+--
+-- Name: 404_ref_rate_sources trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."404_ref_rate_sources" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('rate_code');
+
+
+--
+-- Name: 405_ref_names trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."405_ref_names" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('naming_id');
+
+
+--
+-- Name: 406_ref_pt_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."406_ref_pt_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('pt_type_code');
+
+
+--
+-- Name: 407_ref_statuses trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."407_ref_statuses" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('status_code');
+
+
+--
+-- Name: 408_ref_event_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."408_ref_event_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('event_type_code');
+
+
+--
+-- Name: 409_ref_coa_account_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."409_ref_coa_account_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('account_type_code');
+
+
+--
+-- Name: 410_cal_holidays trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."410_cal_holidays" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('holiday_id');
+
+
+--
+-- Name: 410_ref_arrangement_types trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."410_ref_arrangement_types" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('arrangement_type_code');
+
+
+--
+-- Name: 501_hr_arrangements trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."501_hr_arrangements" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('arrangement_id');
+
+
+--
+-- Name: 502_hr_positions trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."502_hr_positions" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('position_id');
+
+
+--
+-- Name: 601_scen_budgets trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."601_scen_budgets" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('budget_id');
+
+
+--
+-- Name: 602_scen_scenarios trg_audit; Type: TRIGGER; Schema: global; Owner: postgres
+--
+
+CREATE TRIGGER trg_audit AFTER INSERT OR DELETE OR UPDATE ON global."602_scen_scenarios" FOR EACH ROW EXECUTE FUNCTION audit.fn_log_mutation('scenario_id');
+
+
+--
+-- Name: 203_fin_ruleset_lines 203_fin_ruleset_lines_coa_id_fkey; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."203_fin_ruleset_lines"
+    ADD CONSTRAINT "203_fin_ruleset_lines_coa_id_fkey" FOREIGN KEY (coa_id) REFERENCES global."201_fin_coa"(coa_id);
+
+
+--
+-- Name: 302_evt_primitive_transitions 302_evt_primitive_transitions_coa_id_fkey; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."302_evt_primitive_transitions"
+    ADD CONSTRAINT "302_evt_primitive_transitions_coa_id_fkey" FOREIGN KEY (coa_id) REFERENCES global."201_fin_coa"(coa_id);
+
+
+--
+-- Name: 201_fin_coa fk_fin_coa_parent; Type: FK CONSTRAINT; Schema: global; Owner: postgres
+--
+
+ALTER TABLE ONLY global."201_fin_coa"
+    ADD CONSTRAINT fk_fin_coa_parent FOREIGN KEY (parent_coa_id) REFERENCES global."201_fin_coa"(coa_id);
+
+
+--
 -- Name: 301_evt_events gd_001_events_commit_id_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -3360,14 +3550,6 @@ ALTER TABLE ONLY global."301_evt_events"
 
 
 --
--- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_account_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."302_evt_primitive_transitions"
-    ADD CONSTRAINT gd_002_primitive_transitions_account_fk FOREIGN KEY (account_code) REFERENCES global."201_fin_coa"(account_code);
-
-
---
 -- Name: 302_evt_primitive_transitions gd_002_primitive_transitions_entity_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
 --
 
@@ -3405,14 +3587,6 @@ ALTER TABLE ONLY global."202_fin_rulesets"
 
 ALTER TABLE ONLY global."104_gov_commits"
     ADD CONSTRAINT gd_005_commit_records_committing_authority_id_fk FOREIGN KEY (committing_authority_id) REFERENCES global."101_gov_identities"(governance_identity_id);
-
-
---
--- Name: 203_fin_ruleset_lines gd_005_ruleset_lines_account_code_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."203_fin_ruleset_lines"
-    ADD CONSTRAINT gd_005_ruleset_lines_account_code_fk FOREIGN KEY (account_code) REFERENCES global."201_fin_coa"(account_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
 
 
 --
@@ -3501,14 +3675,6 @@ ALTER TABLE ONLY global."401_ref_exchange_rates"
 
 ALTER TABLE ONLY global."201_fin_coa"
     ADD CONSTRAINT gd_016_coa_account_type_fk FOREIGN KEY (account_type) REFERENCES global."409_ref_coa_account_types"(account_type_code) ON UPDATE RESTRICT ON DELETE RESTRICT;
-
-
---
--- Name: 201_fin_coa gd_016_coa_parent_fk; Type: FK CONSTRAINT; Schema: global; Owner: postgres
---
-
-ALTER TABLE ONLY global."201_fin_coa"
-    ADD CONSTRAINT gd_016_coa_parent_fk FOREIGN KEY (parent_account_code) REFERENCES global."201_fin_coa"(account_code);
 
 
 --
@@ -3651,5 +3817,5 @@ ALTER TABLE ONLY global."601_scen_budgets"
 -- PostgreSQL database dump complete
 --
 
-\unrestrict R8iH4eon0FLCW2UmJSDPHB0bWAK4XKMqdxaZqEQx8IgZ0ECERthDZqGkCWCpyN6
+\unrestrict nFMPFHWHQPTaJP3Y84gL5Z5Ev6G7FFUyeaWXrfNawVexkowgerfextM3c7enQOu
 
